@@ -35,19 +35,26 @@
  *
  *       java -classpath <path-to-db-class> Connect <driver> <database-url> <username> <password> <sql-query>
  *
- * MySQL
+ * Below are some notes on the drivers that are used by the appliance. It is best to 
+ * test the connection using the same driver version that the appliance uses.
  *
+ * MySQL
  *  Driver class file:         mysql-3.0.14.jar
  *  Driver class name:         com.mysql.jdbc.Driver
  *  Database URL:              jdbc:mysql://<hostname>/<db-name>
  *
  * DB2
- *  Driver version:            db2java.jar
+ *  Driver version:            IBM DB2 JDBC driver 8.1.0.64 (Type-3 pure Java)
+ *  Driver class file:         db2java.jar
  *  Driver class name:         COM.ibm.db2.jdbc.net.DB2Driver
  *  Database URL:              jdbc:db2://<hostname>:<port>/<db-name>
  *
- * SQL Server:
- *  Driver class file:         v2005/sqljdbc.jar
+ * Postgres
+ *  Driver version:            PostgreSQL 7.1.3 (Type-4 pure Java)
+ *  Driver class file:         pgjdbc2.jar
+ *
+ * Oracle
+ *  Driver version:            Oracle JDBC Driver version - 10.1.0.2.0 (Type-4 pure Java)
  *
  */
 
