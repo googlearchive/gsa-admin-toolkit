@@ -2,6 +2,7 @@
 #
 # Copyright 2007 Google Inc. All Rights Reserved.
 
+
 """ Simple web server for testing the Authn/Authz SPI
 
 This script runs a web server on port 8080 that allows you
@@ -21,13 +22,16 @@ Serving > Access Control
   User login URL: http://www.foo.com:8080/login?host=search.foo.com
   Artifact service URL: http://www.foo.com:8080/artifact_service
   Authz service URL: http://www.foo.com:8080/authz
+  Disable prompt for Basic authentication: checked
 
 Be sure to always use FQDNs so that cookie domains are consistent.
 
 After the crawl has completed, you can test serving with the
 following command:
 
-curl --insecure --location-trusted -v --basic --user user1:userpw -b /tmp/cookies "http://search.foo.com/search?q=secure&site=default_collection&client=default_frontend&output=xml&access=a"
+curl --insecure --location-trusted -v --basic --user user1:userpw \
+-b /tmp/cookies "http://search.foo.com/search?q=secure&site=default_collection\
+&client=default_frontend&output=xml&access=a"
 
 """
 
@@ -89,16 +93,38 @@ class AuthN(object):
     return
 
   def artifact_service(self, SAMLart=None, RelayState=None):
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     pattern = re.compile(".*<samlp:Artifact>(.*)</samlp:Artifact>.*")
     body = cherrypy.request.body.read()
+    print "Body is: %s" % (body)
     match = pattern.match(body)
     login = match.group(1)
     if cherrypy.request.headers["host"].find(":") > -1:
       host = cherrypy.request.headers["host"].split(":")[0]
     else:
       host = cherrypy.request.headers["host"]
-    response = """<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Body><samlp:ArtifactResponse xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns="urn:oasis:names:tc:SAML:2.0:assertion" ID="alsorandomlooking" Version="2.0" InResponseTo="randomlooking" IssueInstant="%s"><Issuer>%s</Issuer><samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status><samlp:Response ID="blahblah" Version="2.0" IssueInstant="%s"><samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status><Assertion Version="2.0" ID="blahblah2" IssueInstant="%s"><Issuer>%s</Issuer><Subject><NameID>CN=%s</NameID></Subject><AuthnStatement AuthnInstant="%s"><AuthnContext><AuthnContextClassRef> urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport </AuthnContextClassRef></AuthnContext></AuthnStatement></Assertion></samlp:Response></samlp:ArtifactResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>""" % (now, host, now, now, host, login, now)
+    response = ("<SOAP-ENV:Envelope "
+    "xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\">"
+    "<SOAP-ENV:Body><samlp:ArtifactResponse "
+    "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\" "
+    "xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\" "
+    "ID=\"alsorandomlooking\" Version=\"2.0\" "
+    "InResponseTo=\"randomlooking\" IssueInstant=\"%s\">"
+    "<Issuer>%s</Issuer><samlp:Status><samlp:StatusCode "
+    "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
+    "</samlp:Status><samlp:Response ID=\"blahblah\" "
+    "Version=\"2.0\" IssueInstant=\"%s\">"
+    "<samlp:Status><samlp:StatusCode "
+    "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
+    "</samlp:Status><Assertion Version=\"2.0\" ID=\"blahblah2\" "
+    "IssueInstant=\"%s\"><Issuer>%s</Issuer><Subject>"
+    "<NameID>CN=%s</NameID></Subject><AuthnStatement "
+    "AuthnInstant=\"%s\"><AuthnContext><AuthnContextClassRef> "
+    "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport "
+    "</AuthnContextClassRef></AuthnContext></AuthnStatement>"
+    "</Assertion></samlp:Response></samlp:ArtifactResponse>"
+    "</SOAP-ENV:Body>"
+    "</SOAP-ENV:Envelope>") % (now, host, now, now, host, login, now)
     print response
     return response
 
@@ -110,7 +136,7 @@ class AuthN(object):
     pattern = re.compile(""".*<saml:NameID>CN=(.*)</saml:NameID>.*""")
     match = pattern.match(body)
     login = match.group(1)
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if cherrypy.request.headers["host"].find(":") > -1:
       host = cherrypy.request.headers["host"].split(":")[0]
     else:
@@ -127,7 +153,24 @@ class AuthN(object):
       # print "%-20s%s: %s" % (string.join(l[:], ""), type, value)
       print "Exception: %s %s" % (type, value)
       decision = "Deny"
-    response = """<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="blahblah" Version="2.0" IssueInstant="%s"><samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status><saml:Assertion Version="2.0" ID="blahblah2" IssueInstant="%s"><saml:Issuer>%s</saml:Issuer><saml:Subject><saml:NameID>CN=%s</saml:NameID></saml:Subject><saml:AuthzDecisionStatement Resource="%s" Decision="%s"><saml:Action Namespace="urn:oasis:names:tc:SAML:1.0:action:ghpp">GET</saml:Action></saml:AuthzDecisionStatement></saml:Assertion></samlp:Response></soapenv:Body></soapenv:Envelope>""" % (now, now, host, login, resource, decision)
+    response = ("<soapenv:Envelope "
+    "xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">"
+    "<soapenv:Body><samlp:Response "
+    "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\" "
+    "xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" "
+    "ID=\"blahblah\" Version=\"2.0\" IssueInstant=\"%s\">"
+    "<samlp:Status><samlp:StatusCode "
+    "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
+    "</samlp:Status><saml:Assertion Version=\"2.0\" "
+    "ID=\"blahblah2\" IssueInstant=\"%s\">"
+    "<saml:Issuer>%s</saml:Issuer><saml:Subject>"
+    "<saml:NameID>CN=%s</saml:NameID></saml:Subject>"
+    "<saml:AuthzDecisionStatement Resource=\"%s\" "
+    "Decision=\"%s\"><saml:Action "
+    "Namespace=\"urn:oasis:names:tc:SAML:1.0:action:ghpp\">"
+    "GET</saml:Action></saml:AuthzDecisionStatement>"
+    "</saml:Assertion></samlp:Response></soapenv:Body>"
+    "</soapenv:Envelope>") % (now, now, host, login, resource, decision)
     print response
     return response
 
