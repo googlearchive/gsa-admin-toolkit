@@ -57,9 +57,9 @@ class AuthN(object):
       self.passwd_db[user] = md5.new(self.user_db[user]).hexdigest()
 
   def index(self):
-    return """<a href="public">public</a><br>
-    <a href="secure">secure</a><br>
-    <a href="authorized">authorized</a>"""
+    return ("<a href=\"public\">public</a><br>"
+            "<a href=\"secure\">secure</a><br>"
+            "<a href=\"authorized\">authorized</a>")
 
   def authenticate(self):
     print cherrypy.request.headers
@@ -71,14 +71,14 @@ class AuthN(object):
 
   def secure(self):
     login = self.authenticate()
-    return """"You must be authenticated to view this page.
-    You are authenticated as &quot;%s&quot;.""" % (login)
+    return ("You must be authenticated to view this page."
+            "You are authenticated as &quot;%s&quot;.") % (login)
 
   def authorized(self):
     login = self.authenticate()
     if login == "crawler":
-      return """"You must be authorized to view this page.
-      You are authenticated as &quot;%s&quot;.""" % (login)
+      return ("You must be authorized to view this page."
+              "You are authenticated as &quot;%s&quot;.") % (login)
     else:
       raise cherrypy.HTTPError(401, "Unauthorized")
 
@@ -104,27 +104,27 @@ class AuthN(object):
     else:
       host = cherrypy.request.headers["host"]
     response = ("<SOAP-ENV:Envelope "
-    "xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\">"
-    "<SOAP-ENV:Body><samlp:ArtifactResponse "
-    "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\" "
-    "xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\" "
-    "ID=\"alsorandomlooking\" Version=\"2.0\" "
-    "InResponseTo=\"randomlooking\" IssueInstant=\"%s\">"
-    "<Issuer>%s</Issuer><samlp:Status><samlp:StatusCode "
-    "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
-    "</samlp:Status><samlp:Response ID=\"blahblah\" "
-    "Version=\"2.0\" IssueInstant=\"%s\">"
-    "<samlp:Status><samlp:StatusCode "
-    "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
-    "</samlp:Status><Assertion Version=\"2.0\" ID=\"blahblah2\" "
-    "IssueInstant=\"%s\"><Issuer>%s</Issuer><Subject>"
-    "<NameID>CN=%s</NameID></Subject><AuthnStatement "
-    "AuthnInstant=\"%s\"><AuthnContext><AuthnContextClassRef> "
-    "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport "
-    "</AuthnContextClassRef></AuthnContext></AuthnStatement>"
-    "</Assertion></samlp:Response></samlp:ArtifactResponse>"
-    "</SOAP-ENV:Body>"
-    "</SOAP-ENV:Envelope>") % (now, host, now, now, host, login, now)
+                "xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\">"
+                "<SOAP-ENV:Body><samlp:ArtifactResponse "
+                "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\" "
+                "xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\" "
+                "ID=\"alsorandomlooking\" Version=\"2.0\" "
+                "InResponseTo=\"randomlooking\" IssueInstant=\"%s\">"
+                "<Issuer>%s</Issuer><samlp:Status><samlp:StatusCode "
+                "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
+                "</samlp:Status><samlp:Response ID=\"blahblah\" "
+                "Version=\"2.0\" IssueInstant=\"%s\">"
+                "<samlp:Status><samlp:StatusCode "
+                "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
+                "</samlp:Status><Assertion Version=\"2.0\" ID=\"blahblah2\" "
+                "IssueInstant=\"%s\"><Issuer>%s</Issuer><Subject>"
+                "<NameID>CN=%s</NameID></Subject><AuthnStatement "
+                "AuthnInstant=\"%s\"><AuthnContext><AuthnContextClassRef> "
+                "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport "
+                "</AuthnContextClassRef></AuthnContext></AuthnStatement>"
+                "</Assertion></samlp:Response></samlp:ArtifactResponse>"
+                "</SOAP-ENV:Body>"
+                "</SOAP-ENV:Envelope>") % (now, host, now, now, host, login, now)
     print response
     return response
 
@@ -154,23 +154,23 @@ class AuthN(object):
       print "Exception: %s %s" % (type, value)
       decision = "Deny"
     response = ("<soapenv:Envelope "
-    "xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">"
-    "<soapenv:Body><samlp:Response "
-    "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\" "
-    "xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" "
-    "ID=\"blahblah\" Version=\"2.0\" IssueInstant=\"%s\">"
-    "<samlp:Status><samlp:StatusCode "
-    "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
-    "</samlp:Status><saml:Assertion Version=\"2.0\" "
-    "ID=\"blahblah2\" IssueInstant=\"%s\">"
-    "<saml:Issuer>%s</saml:Issuer><saml:Subject>"
-    "<saml:NameID>CN=%s</saml:NameID></saml:Subject>"
-    "<saml:AuthzDecisionStatement Resource=\"%s\" "
-    "Decision=\"%s\"><saml:Action "
-    "Namespace=\"urn:oasis:names:tc:SAML:1.0:action:ghpp\">"
-    "GET</saml:Action></saml:AuthzDecisionStatement>"
-    "</saml:Assertion></samlp:Response></soapenv:Body>"
-    "</soapenv:Envelope>") % (now, now, host, login, resource, decision)
+                "xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">"
+                "<soapenv:Body><samlp:Response "
+                "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\" "
+                "xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" "
+                "ID=\"blahblah\" Version=\"2.0\" IssueInstant=\"%s\">"
+                "<samlp:Status><samlp:StatusCode "
+                "Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/>"
+                "</samlp:Status><saml:Assertion Version=\"2.0\" "
+                "ID=\"blahblah2\" IssueInstant=\"%s\">"
+                "<saml:Issuer>%s</saml:Issuer><saml:Subject>"
+                "<saml:NameID>CN=%s</saml:NameID></saml:Subject>"
+                "<saml:AuthzDecisionStatement Resource=\"%s\" "
+                "Decision=\"%s\"><saml:Action "
+                "Namespace=\"urn:oasis:names:tc:SAML:1.0:action:ghpp\">"
+                "GET</saml:Action></saml:AuthzDecisionStatement>"
+                "</saml:Assertion></samlp:Response></soapenv:Body>"
+                "</soapenv:Envelope>") % (now, now, host, login, resource, decision)
     print response
     return response
 
