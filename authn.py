@@ -45,6 +45,9 @@ curl --insecure --location-trusted -v --basic --user user1:userpw \
 -b /tmp/cookies "http://search.foo.com/search?q=secure&site=default_collection\
 &client=default_frontend&output=xml&access=a"
 
+This script requires the cherrypy module to be installed:
+
+http://www.cherrypy.org/
 """
 
 __author__ = 'jlowry@google.com (John Lowry)'
