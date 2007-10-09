@@ -17,6 +17,15 @@
 
 """ Simple web server for testing Cookie Crawl.
 
+Crawl and Index
+  Crawl URLs:
+
+  Cookie Sites:
+    URL of the login page: http://wimbledon.corp.google.com:8080/secure
+    URL pattern for this rule: http://wimbledon.corp.google.com:8080/
+    Click "Create a New Cookie Rule"
+    Enter username "crawler" and password "crawler". Submit form.
+    Click "Save Cookie Rule and Close Window".
 
 
 """
@@ -53,37 +62,44 @@ class Sso(object):
     if self.test_cookie_path:
       try:
         form_cookie = cherrypy.request.cookie[self.FORM_COOKIE].value
-        return "%s incorrectly sent" % (self.FORM_COOKIE)
+        self.redirect("login", "bad_cookie")
+        return
       except:
-        # this is expected
-        pass
-    return ("<h2>Login form</h2>"
-            "<form action=login>"
-            "<input type=hidden name=path value=\"%s\">"
-            "Username: <input type=text name=login><br>"
-            "Password: <input type=psssword name=password><br>"
-            "<input type=submit>"
-            "</form") % (path)
+        cherrypy.response.cookie[self.SSO_COOKIE] = "1"
+        return ("<h2>Login form</h2>"
+                "<form action=login method=POST>"
+                "<input type=hidden name=path value=\"%s\">"
+                "Username: <input type=text name=login><br>"
+                "Password: <input type=psssword name=password><br>"
+                "<input type=submit>"
+                "</form>") % (path)
 
   def get_host(self):
     return cherrypy.request.headers["host"]
 
-  def login(self, login, password, path):
+  def login(self, login, password, path, msg=None):
     if self.test_cookie_path:
+      if msg != None:
+        return "You got message: %s" % (msg)
       try:
         form_cookie = cherrypy.request.cookie[self.FORM_COOKIE].value
-        # this is expected
+        sso_cookie = cherrypy.request.cookie[self.SSO_COOKIE].value
+        if sso_cookie != "1":
+          return "Wrong value for %s cookie." % (self.SSO_COOKIE)
       except:
-        return "You did not send %s" % (self.FORM_COOKIE)
+        return "You did not send a required cookie."
     if login != None and login.strip() != "":
       cherrypy.response.cookie[self.SSO_COOKIE] = urllib.quote(login.strip())
       self.redirect(path)
     else:
       self.redirect("form?path=%s" % (path))
 
-  def redirect(self, path):
+  def redirect(self, path, msg=None):
     cherrypy.response.status = 302
-    location = "http://%s/%s" % (self.get_host(), path)
+    if msg == None:
+      location = "http://%s/%s" % (self.get_host(), path)
+    else:
+      location = "http://%s/%s?msg=%s" % (self.get_host(), path, msg)
     cherrypy.response.headers["location"] = location
 
   def authenticate(self, path):
@@ -93,13 +109,13 @@ class Sso(object):
       return login
     except:
       if self.test_cookie_path:
-        cherrypy.response.cookie[self.FORM_COOKIE] = "1"
-        cherrypy.response.cookie[self.FORM_COOKIE]["path"] = "/login"
         self.redirect("obrareq?path=%s" % (path))
       else:
         self.redirect("form?path=%s" % (path))
 
   def obrareq(self, path):
+    cherrypy.response.cookie[self.FORM_COOKIE] = "1"
+    cherrypy.response.cookie[self.FORM_COOKIE]["path"] = "/login"
     self.redirect("form?path=%s" % (path))
 
   def public(self):
