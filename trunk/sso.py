@@ -66,9 +66,6 @@ class Sso(object):
             "<a href=\"logout\">logout</a>")
 
   def form(self, path="/"):
-    print cherrypy.request.headers
-    print self.test_cookie_path
-    print cherrypy.request.cookie.has_key(FORM_COOKIE)
     if self.test_cookie_path and cherrypy.request.cookie.has_key(FORM_COOKIE):
         form_cookie = cherrypy.request.cookie[FORM_COOKIE].value
         self.redirect("login", "bad_cookie")
