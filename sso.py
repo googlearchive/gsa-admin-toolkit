@@ -43,11 +43,12 @@ import urllib
 import sys
 import getopt
 
+FORM_COOKIE = "ObFormLoginCookie"
+SSO_COOKIE = "ObSSOCookie"
+
 class Sso(object):
 
   def __init__(self, argv):
-    self.FORM_COOKIE = "ObFormLoginCookie"
-    self.SSO_COOKIE = "ObSSOCookie"
     self.test_cookie_path = False
     try:
       opts, args = getopt.getopt(argv[1:], None,["test_cookie_path"])
@@ -65,39 +66,39 @@ class Sso(object):
             "<a href=\"logout\">logout</a>")
 
   def form(self, path="/"):
-    if self.test_cookie_path:
-      try:
-        form_cookie = cherrypy.request.cookie[self.FORM_COOKIE].value
+    print cherrypy.request.headers
+    print self.test_cookie_path
+    print cherrypy.request.cookie.has_key(FORM_COOKIE)
+    if self.test_cookie_path and cherrypy.request.cookie.has_key(FORM_COOKIE):
+        form_cookie = cherrypy.request.cookie[FORM_COOKIE].value
         self.redirect("login", "bad_cookie")
-        return
-      except:
-        cherrypy.response.cookie[self.SSO_COOKIE] = "1"
-        return ("<h2>Login form</h2>"
-                "<form action=login method=POST>"
-                "<input type=hidden name=path value=\"%s\">"
-                "Username: <input type=text name=login><br>"
-                "Password: <input type=password name=password><br>"
-                "<input type=submit>"
-                "</form>") % (path)
+    else:
+      cherrypy.response.cookie[SSO_COOKIE] = "1"
+      return ("<h2>Login form</h2>"
+              "<form action=login method=POST>"
+              "<input type=hidden name=path value=\"%s\">"
+              "Username: <input type=text name=login><br>"
+              "Password: <input type=password name=password><br>"
+              "<input type=submit>"
+              "</form>") % (path)
 
   def get_host(self):
     return cherrypy.request.headers["host"]
 
-  def login(self, login, password, path, msg=None):
-    print cherrypy.request.headers
+  def login(self, login=None, password=None, path=None, msg=None):
     if self.test_cookie_path:
       if msg != None:
         return "You got message: %s" % (msg)
-      try:
-        form_cookie = cherrypy.request.cookie[self.FORM_COOKIE].value
+      if cherrypy.request.cookie.has_key(FORM_COOKIE):
+        form_cookie = cherrypy.request.cookie[FORM_COOKIE].value
         # Firefox sends sso_cookie but Admin Console in4.6.4.G.70 does not
-        # sso_cookie = cherrypy.request.cookie[self.SSO_COOKIE].value
+        # sso_cookie = cherrypy.request.cookie[SSO_COOKIE].value
         # if sso_cookie != "1":
-        #   return "Wrong value for %s cookie." % (self.SSO_COOKIE)
-      except:
+        #   return "Wrong value for %s cookie." % (SSO_COOKIE)
+      else:
         return "You did not send a required cookie."
     if login != None and login.strip() != "":
-      cherrypy.response.cookie[self.SSO_COOKIE] = urllib.quote(login.strip())
+      cherrypy.response.cookie[SSO_COOKIE] = urllib.quote(login.strip())
       self.redirect(path)
     else:
       self.redirect("form?path=%s" % (path))
@@ -111,9 +112,8 @@ class Sso(object):
     cherrypy.response.headers["location"] = location
 
   def authenticate(self, path):
-    print cherrypy.request.headers
     try:
-      login = cherrypy.request.cookie[self.SSO_COOKIE].value
+      login = cherrypy.request.cookie[SSO_COOKIE].value
       return login
     except:
       if self.test_cookie_path:
@@ -122,8 +122,8 @@ class Sso(object):
         self.redirect("form?path=%s" % (path))
 
   def obrareq(self, path):
-    cherrypy.response.cookie[self.FORM_COOKIE] = "1"
-    cherrypy.response.cookie[self.FORM_COOKIE]["path"] = "/login"
+    cherrypy.response.cookie[FORM_COOKIE] = "1"
+    cherrypy.response.cookie[FORM_COOKIE]["path"] = "/login"
     self.redirect("form?path=%s" % (path))
 
   def public(self):
@@ -145,13 +145,19 @@ class Sso(object):
       raise cherrypy.HTTPError(401, "Unauthorized")
 
   def logout(self):
-    cherrypy.response.cookie[self.SSO_COOKIE] = ""
-    cherrypy.response.cookie[self.SSO_COOKIE]['expires'] = 0
+    cherrypy.response.cookie[SSO_COOKIE] = ""
+    cherrypy.response.cookie[SSO_COOKIE]['expires'] = 0
     if self.test_cookie_path:
-      cherrypy.response.cookie[self.FORM_COOKIE] = ""
-      cherrypy.response.cookie[self.FORM_COOKIE]['expires'] = 0
+      cherrypy.response.cookie[FORM_COOKIE] = ""
+      cherrypy.response.cookie[FORM_COOKIE]['expires'] = 0
     return "You are logged out. Return to the <a href=/>index</a>."
 
+  def testcookiepath(self, value=None):
+    if value != None and value == "1":
+      self.test_cookie_path = True
+    elif value != None and value == "0":
+      self.test_cookie_path = False
+    return str(self.test_cookie_path)
 
   login.exposed = True
   form.exposed = True
@@ -161,6 +167,7 @@ class Sso(object):
   authorized.exposed = True
   logout.exposed = True
   obrareq.exposed = True
+  testcookiepath.exposed = True
 
 def main(argv):
   pass
