@@ -74,6 +74,7 @@ class AuthN(object):
   def index(self):
     return ("<a href=\"public\">public</a><br>"
             "<a href=\"secure\">secure</a><br>"
+            "<a href=\"sleep\">sleep</a><br>"
             "<a href=\"authorized\">authorized</a>")
 
   def authenticate(self):
@@ -88,6 +89,11 @@ class AuthN(object):
     login = self.authenticate()
     return ("You must be authenticated to view this page."
             "You are authenticated as &quot;%s&quot;.") % (login)
+
+  def sleep(self):
+    login = self.authenticate()
+    time.sleep(75)
+    return "I'm awake!"
 
   def authorized(self):
     login = self.authenticate()
@@ -196,6 +202,7 @@ class AuthN(object):
   secure.exposed = True
   index.exposed = True
   authorized.exposed = True
+  sleep.exposed = True
 
 
 def main(argv):
