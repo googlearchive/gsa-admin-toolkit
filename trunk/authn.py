@@ -74,6 +74,7 @@ class AuthN(object):
   def index(self):
     return ("<a href=\"public\">public</a><br>"
             "<a href=\"secure\">secure</a><br>"
+            "<a href=\"param?val1=foo&val2=bar\">param</a><br>"
             "<a href=\"sleep\">sleep</a><br>"
             "<a href=\"authorized\">authorized</a>")
 
@@ -89,6 +90,11 @@ class AuthN(object):
     login = self.authenticate()
     return ("You must be authenticated to view this page."
             "You are authenticated as &quot;%s&quot;.") % (login)
+
+  def param(self, val1, val2):
+    login = self.authenticate()
+    return ("The value of the &quot;val1&quot; parameter is: %s<br>"
+            "The value of the &quot;val2&quot; parameter is: %s" % (val1, val2))
 
   def sleep(self):
     login = self.authenticate()
@@ -203,6 +209,7 @@ class AuthN(object):
   index.exposed = True
   authorized.exposed = True
   sleep.exposed = True
+  param.exposed = True
 
 
 def main(argv):
