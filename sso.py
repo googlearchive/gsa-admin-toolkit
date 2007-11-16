@@ -109,14 +109,15 @@ class Sso(object):
     cherrypy.response.headers["location"] = location
 
   def authenticate(self, path):
-    try:
-      login = cherrypy.request.cookie[SSO_COOKIE].value
-      return login
-    except:
+    if cherrypy.request.cookie.has_key(SSO_COOKIE):
+      return cherrypy.request.cookie[SSO_COOKIE].value
+    else:
       if self.test_cookie_path:
-        self.redirect("obrareq?path=%s" % (path))
+        uri = "obrareq?path=%s" % (path)
       else:
-        self.redirect("form?path=%s" % (path))
+        uri = "form?path=%s" % (path)
+      location = "http://%s/%s" % (self.get_host(), uri)
+      raise cherrypy.HTTPRedirect(location)
 
   def obrareq(self, path):
     cherrypy.response.cookie[FORM_COOKIE] = "1"

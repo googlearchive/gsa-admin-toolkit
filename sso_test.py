@@ -48,6 +48,9 @@ class CustomRedirectHandler(urllib2.HTTPRedirectHandler):
   def http_error_302(self, req, fp, code, msg, headers):
     return None
 
+  def http_error_303(self, req, fp, code, msg, headers):
+    return None
+
 class Error(Exception):
   """Base exception class for this module."""
   pass
@@ -117,7 +120,7 @@ class SsoUnitTest(unittest.TestCase):
       f = opener.open(url)
       raise SsoUnitTestException("secure page did not redirect to login form")
     except urllib2.HTTPError, e:
-      self.assertEqual(e.code, 302)
+      self.assert_(e.code == 302 or e.code == 303)
       self.assertEqual(e.headers["location"],
                        "%s/%s?path=secure" % (SsoUnitTest.url_prefix, script))
       self.assert_(e.headers.has_key("set-cookie") == False)
