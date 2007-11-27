@@ -17,23 +17,29 @@
 
 """ Simple web server for testing Cookie Sites.
 
-This is a simple web server for testing the Cookie Sites in a Google
-Search Appliance. Configure the Admin Console as follows:
+This is a simple web server for testing Forms Authentication and
+Cookie Sites in a Google Search Appliance. Configure the Admin Console
+as follows:
 
 Crawl and Index
   Crawl URLs:
     Start crawling from: http://www.mycompany.com:8080/
     Follow patterns: http://www.mycompany.com:8080/
-  Cookie Sites:
+  Cookie Sites/Forms Authentication:
     URL of the login page: http://www.mycompany.com:8080/secure
     URL pattern for this rule: http://www.mycompany.com:8080/
-    Click "Create a New Cookie Rule"
+    Click "Create a New Cookie/Forms Authentication Rule"
     Enter username "crawler" and password "crawler". Submit form.
     Click "Save Cookie Rule and Close Window".
+Serving > Forms Authentication
+    URL: http://www.mycompany.com:8080/secure
+    Cookie name: ObSSOCookie
 
 You can use this program to mimic an Oblix server by running with the
 --test_cookie_path option.
 
+This script requires the cherrypy v3 to be installed (v2 gives an error
+since quickstart is not available).
 """
 
 __author__ = 'jlowry@google.com (John Lowry)'
