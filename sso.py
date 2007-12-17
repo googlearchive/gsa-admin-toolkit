@@ -35,14 +35,13 @@ Serving > Forms Authentication
     URL: http://www.mycompany.com:8080/secure
     Cookie name: ObSSOCookie
 
-You can use this program to mimic an Oblix server by running with the
---test_cookie_path option.
+Options:
 
-You can test whether bug #950572 has been fixed by running with the
-test_bug_950572 option. This bug causes only one cookie to be sent by
-the browser to the Admin Console.
-
-For SSL, call this script with the --use_ssl option.
+  --test_cookie_path        Mimics an Oblix server's cookie handling
+  --test_bug_950572         Tests whether bug has been fixed that
+                            prevents more than one cookie being handled
+  --test_meta_refresh       Tests whether appliance handles meta refresh
+  --use_ssl                 Run server as HTTP
 
 This script requires the cherrypy v3 to be installed (v2 gives an error
 since quickstart is not available).
@@ -64,9 +63,10 @@ class Sso(object):
     self.test_cookie_path = False
     self.protocol = "http"
     self.test_bug_950572 = False
+    self.test_meta_refresh = False
     try:
       opts, args = getopt.getopt(argv[1:], None, ["test_cookie_path", "use_ssl",
-                                                  "test_bug_950572"])
+                                                  "test_bug_950572", "test_meta_refresh"])
     except getopt.GetoptError:
       print "Invalid arguments"
       sys.exit(1)
@@ -80,6 +80,8 @@ class Sso(object):
         self.protocol = "https"
       if opt == "--test_bug_950572":
         self.test_bug_950572 = True
+      if opt == "--test_meta_refresh":
+        self.test_meta_refresh = True
 
   def index(self):
     return ("<a href=\"public\">public</a><br>"
@@ -152,10 +154,17 @@ class Sso(object):
   def public(self):
     return "Anyone can view this page. No authentication is required"
 
-  def secure(self):
+  def secure(self, redirected=None):
     login = self.authenticate("secure")
-    return ("You must be authenticated to view this page."
-            "You are authenticated as &quot;%s&quot;.") % (login)
+    refresh = ""
+    if self.test_meta_refresh:
+      this_url = "%s://%s/secure?redirected=1" % (self.protocol, self.get_host())
+      if not redirected:
+        refresh = """<meta http-equiv="Refresh" content ="0;URL=%s">""" % this_url
+    return ("<html><head>%s</head><body>"
+            "You must be authenticated to view this page."
+            "You are authenticated as &quot;%s&quot;."
+            "</body></html>") % (refresh, login)
 
   def authorized(self):
     login = self.authenticate("authorized")
