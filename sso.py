@@ -38,6 +38,12 @@ Serving > Forms Authentication
 You can use this program to mimic an Oblix server by running with the
 --test_cookie_path option.
 
+You can test whether bug #950572 has been fixed by running with the
+test_bug_950572 option. This bug causes only one cookie to be sent by
+the browser to the Admin Console.
+
+For SSL, call this script with the --use_ssl option.
+
 This script requires the cherrypy v3 to be installed (v2 gives an error
 since quickstart is not available).
 """
@@ -56,14 +62,24 @@ class Sso(object):
 
   def __init__(self, argv):
     self.test_cookie_path = False
+    self.protocol = "http"
+    self.test_bug_950572 = False
     try:
-      opts, args = getopt.getopt(argv[1:], None,["test_cookie_path"])
+      opts, args = getopt.getopt(argv[1:], None, ["test_cookie_path", "use_ssl",
+                                                  "test_bug_950572"])
     except getopt.GetoptError:
       print "Invalid arguments"
       sys.exit(1)
     for opt, arg in opts:
       if opt == "--test_cookie_path":
         self.test_cookie_path = True
+      if opt == "--use_ssl":
+        cherrypy.config.update({'global': {
+            'server.ssl_certificate': 'ssl.crt',
+            'server.ssl_private_key': 'ssl.key', }})
+        self.protocol = "https"
+      if opt == "--test_bug_950572":
+        self.test_bug_950572 = True
 
   def index(self):
     return ("<a href=\"public\">public</a><br>"
@@ -89,15 +105,18 @@ class Sso(object):
     return cherrypy.request.headers["host"]
 
   def login(self, login=None, password=None, path=None, msg=None):
+    # print cherrypy.request.headers
     if self.test_cookie_path:
       if msg != None:
         return "You got message: %s" % (msg)
       if cherrypy.request.cookie.has_key(FORM_COOKIE):
         form_cookie = cherrypy.request.cookie[FORM_COOKIE].value
-        # Firefox sends sso_cookie but Admin Console in4.6.4.G.70 does not
-        # sso_cookie = cherrypy.request.cookie[SSO_COOKIE].value
-        # if sso_cookie != "1":
-        #   return "Wrong value for %s cookie." % (SSO_COOKIE)
+        # Firefox sends sso_cookie but Admin Console in 4.6.4.G.70
+        # and 5.0 does not due to bug #950572.
+        if self.test_bug_950572:
+          sso_cookie = cherrypy.request.cookie[SSO_COOKIE].value
+          if sso_cookie != "1":
+            return "Wrong value for %s cookie." % (SSO_COOKIE)
       else:
         return "You did not send a required cookie."
     if login != None and login.strip() != "":
@@ -109,9 +128,9 @@ class Sso(object):
   def redirect(self, path, msg=None):
     cherrypy.response.status = 302
     if msg == None:
-      location = "http://%s/%s" % (self.get_host(), path)
+      location = "%s://%s/%s" % (self.protocol, self.get_host(), path)
     else:
-      location = "http://%s/%s?msg=%s" % (self.get_host(), path, msg)
+      location = "%s://%s/%s?msg=%s" % (self.protocol, self.get_host(), path, msg)
     cherrypy.response.headers["location"] = location
 
   def authenticate(self, path):
@@ -122,7 +141,7 @@ class Sso(object):
         uri = "obrareq?path=%s" % (path)
       else:
         uri = "form?path=%s" % (path)
-      location = "http://%s/%s" % (self.get_host(), uri)
+      location = "%s://%s/%s" % (self.protocol, self.get_host(), uri)
       raise cherrypy.HTTPRedirect(location)
 
   def obrareq(self, path):
