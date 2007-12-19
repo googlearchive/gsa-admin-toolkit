@@ -47,10 +47,25 @@
 # 
 #
 
-appliance=$1
-domain=$2
+appliance=""
+domain=""
+debug=0
 
-tempfile=/tmp/curl.out.$$
+while getopts h:q:d o; do
+  case "$o" in
+    h)     appliance="$OPTARG";;
+    q)     domain="$OPTARG";;
+    d)     debug=1;;
+  esac
+done
+
+if test -z $appliance -o -z $domain; then
+  echo "Usage: $0 -h appliance_hostname -q query_term"
+  exit 1
+fi
+
+results_file=/tmp/curl.results.$$
+status_file=/tmp/curl.status.$$
 timeout="--connect-timeout 10 --max-time 60"
 datestr=`date +%s`
 query="${domain}+OR+${datestr}${RANDOM}"
@@ -60,10 +75,33 @@ params="client=default_frontend&site=default_collection&output=xml"
 url="http://${appliance}/search?q=${query}&${params}&monitoring=1"
 
 echo -n `date` " "
-curl -s --output ${tempfile} -w "${outstring}" ${timeout} "${url}"
+curl_command="curl -s --output ${results_file} -w \"${outstring}\" ${timeout} \"${url}\""
+curl -s --output ${results_file} -w "${outstring}" ${timeout} "${url}" > ${status_file}
 retval=$?
-results=`cat ${tempfile} | grep "<M>" | sed 's/.*<M>\(.*\)<\/M>.*/\1/;'`
-echo -n " Estimated results: ${results}"
-echo " Curl exit status: ${retval}"
+status=`cat ${status_file}`
+echo -n ${status}
+http_status=`echo ${status} | cut -d " " -f 3`
+results=`cat ${results_file} | grep "<M>" | sed 's/.*<M>\(.*\)<\/M>.*/\1/;' | sed 's/ //g'`
+echo -n " Estimated results: ${results} "
+echo -n "Curl exit status: ${retval} "
 
-rm $tempfile
+final_status="Success"
+if test ${retval} -ne 0; then
+  final_status="Failed: curl error"
+fi
+if test -z ${results}; then
+  final_status="Failed: no results"
+fi
+if test ${http_status} != "200"; then
+  final_status="Failed: HTTP error"
+fi
+
+echo ${final_status}
+
+if test ${debug} -eq 1; then
+  echo ${curl_command}
+  cat ${results_file}
+fi
+
+rm ${results_file}
+rm ${status_file}
