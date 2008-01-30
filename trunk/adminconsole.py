@@ -1,5 +1,7 @@
 #!/usr/bin/python
 #
+# http://gsa-admin-toolkit.googlecode.com/svn/trunk/adminconsole.py
+#
 # Copyright (C) 2007 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,7 +44,7 @@ def usage():
 
   --username: admin user username
   --password: admin user password
-  --action: db_sync|pause_crawl|resume_crawl|crawl_status
+  --action: db_sync|pause_crawl|resume_crawl|crawl_status|shutdown
   --hostname: hostname of the Google Search Appliance
   --help: output this message
 
@@ -96,7 +98,6 @@ def pause_crawl(base_url, cookie):
   request.add_header('Cookie', cookie)
   res = urllib2.urlopen(request)
 
-
 def resume_crawl(base_url, cookie):
   request = urllib2.Request(base_url,
                             urllib.urlencode({'actionType' : 'crawlStatus','resumeCrawl' : 'Resume Crawl'}))
@@ -113,6 +114,10 @@ def crawl_status(base_url, cookie):
   match = regex.search(content)
   print "Status is: %s" % (string.strip(match.group(1)))
 
+def shutdown(base_url, cookie):
+  request = urllib2.Request(base_url)
+  request.add_header('Cookie', cookie)
+  res = urllib2.urlopen(request,"powerOffYes=+Yes+&actionType=shutdown")
 
 def main(argv):
   try:
@@ -147,7 +152,7 @@ def main(argv):
     if opt == "--password":
       password = arg
 
-  if action not in ["db_sync", "pause_crawl", "resume_crawl", "crawl_status"]:
+  if action not in ["db_sync", "pause_crawl", "resume_crawl", "crawl_status", "shutdown"]:
     usage()
     sys.exit(1)
 
@@ -164,6 +169,8 @@ def main(argv):
       resume_crawl(base_url, cookie)
     elif action == "crawl_status":
       crawl_status(base_url, cookie)
+    elif action == "shutdown":
+      shutdown(base_url, cookie)
     logout(base_url, cookie)
   else:
     usage()
