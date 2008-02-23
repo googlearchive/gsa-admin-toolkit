@@ -96,7 +96,7 @@ class Sso(object):
     else:
       cherrypy.response.cookie[SSO_COOKIE] = "1"
       return ("<h2>Login form</h2>"
-              "<form action=login method=POST>"
+              "<form action=/login method=POST>"
               "<input type=hidden name=path value=\"%s\">"
               "Username: <input type=text name=login><br>"
               "Password: <input type=password name=password><br>"
