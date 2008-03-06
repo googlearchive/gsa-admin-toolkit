@@ -35,6 +35,16 @@ Serving > Forms Authentication
     URL: http://www.mycompany.com:8080/secure
     Cookie name: ObSSOCookie
 
+    If you want to use External Login you can check the
+    "Always redirect to external login server"  option and point
+    the appliance to http://myhost.mydomain.com:8080/externalLogin
+    Note that the external login script will not work when
+    calling sso.py with the test_cookie_path option.
+    You must also set the SSO_COOKIE_DOMAIN and SEARCH_HOST variables
+    to something like
+          SSO_COOKIE_DOMAIN = ".mydomain.com"
+          SEARCH_HOST = "search.mydomain.com"
+
 Options:
 
   --test_cookie_path        Mimics an Oblix server's cookie handling
@@ -56,6 +66,8 @@ import getopt
 
 FORM_COOKIE = "ObFormLoginCookie"
 SSO_COOKIE = "ObSSOCookie"
+SSO_COOKIE_DOMAIN = ""
+SEARCH_HOST = ""
 
 class Sso(object):
 
@@ -64,6 +76,8 @@ class Sso(object):
     self.protocol = "http"
     self.test_bug_950572 = False
     self.test_meta_refresh = False
+    self.cookie_domain = SSO_COOKIE_DOMAIN
+    self.search_host = SEARCH_HOST
     try:
       opts, args = getopt.getopt(argv[1:], None, ["test_cookie_path", "use_ssl",
                                                   "test_bug_950572", "test_meta_refresh"])
@@ -91,8 +105,8 @@ class Sso(object):
 
   def form(self, path="/"):
     if self.test_cookie_path and cherrypy.request.cookie.has_key(FORM_COOKIE):
-        form_cookie = cherrypy.request.cookie[FORM_COOKIE].value
-        self.redirect("login", "bad_cookie")
+      form_cookie = cherrypy.request.cookie[FORM_COOKIE].value
+      self.redirect("login", "bad_cookie")
     else:
       cherrypy.response.cookie[SSO_COOKIE] = "1"
       return ("<h2>Login form</h2>"
@@ -123,13 +137,17 @@ class Sso(object):
         return "You did not send a required cookie."
     if login != None and login.strip() != "":
       cherrypy.response.cookie[SSO_COOKIE] = urllib.quote(login.strip())
+      if self.cookie_domain:
+        cherrypy.response.cookie[SSO_COOKIE]['domain'] = self.cookie_domain
       self.redirect(path)
     else:
       self.redirect("form?path=%s" % (path))
 
   def redirect(self, path, msg=None):
     cherrypy.response.status = 302
-    if msg == None:
+    if path.startswith("http://") or path.startswith("https://"):
+     location = path
+    elif msg == None:
       location = "%s://%s/%s" % (self.protocol, self.get_host(), path)
     else:
       location = "%s://%s/%s?msg=%s" % (self.protocol, self.get_host(), path, msg)
@@ -145,6 +163,17 @@ class Sso(object):
         uri = "form?path=%s" % (path)
       location = "%s://%s/%s" % (self.protocol, self.get_host(), uri)
       raise cherrypy.HTTPRedirect(location)
+
+  def externalLogin (self, returnPath=None):
+    if not returnPath:
+      return "Need to specify returnPath"
+    if cherrypy.request.headers.has_key("Referer"):
+      returnHost = cherrypy.request.headers["Referer"].split('/')[2]
+    else:
+      returnHost = self.search_host
+    path = "http://" + returnHost + returnPath
+    self.authenticate(urllib.quote(path))
+    self.redirect(path)
 
   def obrareq(self, path):
     cherrypy.response.cookie[FORM_COOKIE] = "1"
@@ -191,6 +220,16 @@ class Sso(object):
       self.test_cookie_path = False
     return str(self.test_cookie_path)
 
+  def set_cookie_domain(self, value=None):
+    if value != None:
+      self.cookie_domain = value
+    return str(self.cookie_domain)
+
+  def set_search_host(self, value=None):
+    if value != None:
+      self.search_host = value
+    return str(self.search_host)
+
   login.exposed = True
   form.exposed = True
   public.exposed = True
@@ -200,6 +239,9 @@ class Sso(object):
   logout.exposed = True
   obrareq.exposed = True
   testcookiepath.exposed = True
+  externalLogin.exposed = True
+  set_cookie_domain.exposed = True
+  set_search_host.exposed = True
 
 def main(argv):
   pass

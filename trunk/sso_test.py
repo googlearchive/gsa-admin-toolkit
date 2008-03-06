@@ -65,6 +65,31 @@ class SsoUnitTest(unittest.TestCase):
 
   url_prefix = "http://localhost:8080"
   login = "test1"
+  cookie_domain = ".foo.com"
+  search_host = "search.foo.com"
+
+  def setUp(self):
+    url = "%s/testcookiepath" % (SsoUnitTest.url_prefix)
+    f = urllib2.urlopen(url)
+    val = f.read()
+    if val.find("True") > -1:
+      self.test_cookie_path = 1
+    else:
+      self.test_cookie_path = 0
+    url = "%s/set_cookie_domain" % (SsoUnitTest.url_prefix)
+    f = urllib2.urlopen(url)
+    self.cookie_domain = f.read()
+    url = "%s/set_search_host" % (SsoUnitTest.url_prefix)
+    f = urllib2.urlopen(url)
+    self.search_host = f.read()
+
+  def tearDown(self):
+    url = "%s/testcookiepath?value=%s" % (SsoUnitTest.url_prefix, self.test_cookie_path)
+    f = urllib2.urlopen(url)
+    url = "%s/set_cookie_domain?value=%s" % (SsoUnitTest.url_prefix, self.cookie_domain)
+    f = urllib2.urlopen(url)
+    url = "%s/set_search_host?value=%s" % (SsoUnitTest.url_prefix, self.search_host)
+    f = urllib2.urlopen(url)
 
   def setCookieTest(self, value):
     """Method for switching test_cookie_path on and off."""
@@ -75,6 +100,18 @@ class SsoUnitTest(unittest.TestCase):
       self.assert_("""val.find("True") > -1""")
     else:
       self.assert_("""val.find("True") == -1""")
+
+  def setCookieDomain(self, value):
+    url = "%s/set_cookie_domain?value=%s" % (SsoUnitTest.url_prefix, value)
+    f = urllib2.urlopen(url)
+    val = f.read()
+    self.assertEqual(val, value)
+
+  def setSearchHost(self, value):
+    url = "%s/set_search_host?value=%s" % (SsoUnitTest.url_prefix, value)
+    f = urllib2.urlopen(url)
+    val = f.read()
+    self.assertEqual(val, value)
 
   def getPublic(self):
     """Method for getting a public URL."""
@@ -207,6 +244,7 @@ class SsoUnitTest(unittest.TestCase):
 
   def testPostFormCookiePathDisabled(self):
     self.setCookieTest(0)
+    self.setCookieDomain(SsoUnitTest.cookie_domain)
     url = "%s/login" % (SsoUnitTest.url_prefix)
     params = urllib.urlencode({ "login":SsoUnitTest.login,
                                 "password":"test1",
@@ -219,11 +257,16 @@ class SsoUnitTest(unittest.TestCase):
       self.assertEqual(e.code, 302)
       self.assertEqual(e.headers["location"],
                        "%s/secure" % (SsoUnitTest.url_prefix))
-      self.assertEqual(e.headers["set-cookie"],
-                       "%s=%s;" % (sso.SSO_COOKIE, SsoUnitTest.login))
+      if self.cookie_domain:
+        self.assertEqual(e.headers["set-cookie"], "%s=%s; Domain=%s;" %
+                         (sso.SSO_COOKIE, SsoUnitTest.login, SsoUnitTest.cookie_domain))
+      else:
+        self.assertEqual(e.headers["set-cookie"], "%s=%s" %
+                         (sso.SSO_COOKIE, SsoUnitTest.login))
 
   def testPostFormCookiePathEnabled(self):
     self.setCookieTest(1)
+    self.setCookieDomain(SsoUnitTest.cookie_domain)
     url = "%s/login" % (SsoUnitTest.url_prefix)
     params = urllib.urlencode({ "login":SsoUnitTest.login,
                                 "password":"test1",
@@ -239,9 +282,47 @@ class SsoUnitTest(unittest.TestCase):
       self.assertEqual(e.code, 302)
       self.assertEqual(e.headers["location"],
                        "%s/secure" % (SsoUnitTest.url_prefix))
-      self.assertEqual(e.headers["set-cookie"],
-                       "%s=%s;" % (sso.SSO_COOKIE, SsoUnitTest.login))
+      if self.cookie_domain:
+        self.assertEqual(e.headers["set-cookie"], "%s=%s; Domain=%s;" %
+                         (sso.SSO_COOKIE, SsoUnitTest.login, SsoUnitTest.cookie_domain))
+      else:
+        self.assertEqual(e.headers["set-cookie"], "%s=%s" %
+                         (sso.SSO_COOKIE, SsoUnitTest.login))
 
+  def testExternalLoginWithAuth(self):
+    """Method for getting the External Login URL with the authentication cookies."""
+    self.setCookieTest(0)
+    self.setCookieDomain(SsoUnitTest.cookie_domain)
+    self.setSearchHost(SsoUnitTest.search_host)
+    url = "%s/externalLogin?returnPath=/secure" % (SsoUnitTest.url_prefix)
+    req = urllib2.Request(url)
+    req.add_header("Cookie", "%s=%s;" % (sso.SSO_COOKIE, SsoUnitTest.login))
+    # req.add_header("Referer", "%s/" % (SsoUnitTest.url_prefix))
+    opener = urllib2.build_opener(CustomRedirectHandler())
+    try:
+      f = opener.open(req)
+      raise SsoUnitTestException("External Login did not redirect when presented with valid cookie")
+    except urllib2.HTTPError, e:
+      self.assertEqual(e.code, 302)
+      self.assertEqual(e.headers["location"], "http://%s/secure" % (SsoUnitTest.search_host))
+
+  def testExternalLoginWithoutAuth(self):
+    """Method for getting External Login URL without the authentication cookies."""
+    self.setCookieTest(0)
+    self.setCookieDomain(SsoUnitTest.cookie_domain)
+    self.setSearchHost(SsoUnitTest.search_host)
+    url = "%s/externalLogin?returnPath=/secure" % (SsoUnitTest.url_prefix)
+    req = urllib2.Request(url)
+    # req.add_header("Referer", "%s/" % (SsoUnitTest.url_prefix))
+    opener = urllib2.build_opener(CustomRedirectHandler())
+    try:
+      f = opener.open(req)
+      raise SsoUnitTestException("External Login did not redirect to login form")
+    except urllib2.HTTPError, e:
+      self.assert_(e.code, 302)
+      self.assertEqual(e.headers["location"], "%s/form?path=http%%3A//%s/secure" %
+                       (SsoUnitTest.url_prefix, urllib.quote(SsoUnitTest.search_host)))
+      self.assert_(e.headers.has_key("set-cookie") == False)
 
 
 def main(argv):
