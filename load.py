@@ -35,6 +35,14 @@
 #   Tue Aug 14 08:48:26 2007: success: 0.1
 #
 
+
+# TODO:
+#  * Need to use logging code that is threadsafe to guarantee that each
+#    print statement gets on its own line.
+#  * Investigate why the script runs more queries than passed in through
+#    the input file, at high query loads. Possible multi-threading problem.
+#
+
 import httplib
 import mimetools
 import threading
@@ -139,7 +147,7 @@ if __name__=='__main__':
     if opt == "--threads":
       num_threads = int(arg)
     if opt == "--port":
-      port == arg
+      port = arg
 
   if not host or not queries_filename:
     print "Must provide a hostname and queries filename"
