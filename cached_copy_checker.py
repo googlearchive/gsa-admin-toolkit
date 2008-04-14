@@ -23,7 +23,7 @@ URL.
 
 PURPOSE: This script will tell you whether crawl, indexing and serving
 are working on the appliance.  You create a URL on you web server that
-always shows the current date and then configure the appliance to
+always shows the current timestamp and then configure the appliance to
 crawl it. Then you can periodically run this script, which will check
 the cached copy of the URL and compare the date in it with the current
 date. If there is a big difference, then the issue is worth investigating
@@ -32,7 +32,10 @@ and the script will email you, otherwise everything is okay.
 HIGH LEVEL STEPS:
 
 1. Configure a URL on your web server that returns the current
-   timestamp (seconds since the epoch).
+   timestamp (seconds since the epoch) in the first line and description
+   text in the second (separate lines using <br/>). Description text
+   should not be less than 15-20 words, otherwise the search appliance
+   may not detect the change in the page.
 
 2. Configure the appliance to crawl it and wait for it to be indexed.
 
@@ -41,18 +44,21 @@ HIGH LEVEL STEPS:
 
 DETAILED STEPS:
 
-1. Create a URL that returns nothing but seconds since the epoch. Here
-is an example in python using CherryPy as a web server
-(http://www.cherrypy.org/)
+1. Create a URL that returns seconds since the epoch in the first line and
+description on the second line. Here is an example in python using CherryPy
+as a web server (http://www.cherrypy.org/).
 
 ---
 import cherrypy,time
 
 class Timestamp(object):
-    def index(self):
-        return str(int(time.time()))
+  def index(self):
+    return str(int(time.time())) + "<br>" + "Current timestamp is "\
+           "printed above. This document is used for Google Search Appliance "\
+           "monitoring. Please contact the appliance admin "\
+           "if you have any questions."
 
-    index.exposed = True
+  index.exposed = True
 
 cherrypy.server.socket_port = 8082
 cherrypy.quickstart(Timestamp())
@@ -69,8 +75,8 @@ Crawl Frequently' as well.
 
 3. Enter appropriate values in all the parameters below and perform a
 test run by running this script by hand.  (You need to have python
-installed. To run the script, run: python cached_copy_checker.py). 
-You may want to change send_alert message to just print the error 
+installed. To run the script, run: python cached_copy_checker.py).
+You may want to change send_alert message to just print the error
 instead of emailing it during the first test run.
 '''
 
@@ -86,7 +92,7 @@ ONE_DAY = 60 * 60 * 24
 # URL that is being indexed by the appliance.
 url = 'REPLACE_WITH_URL'
 # Hostname of the GSA/Mini.
-appliance_hostname = 'REPLACE_WITH_HOSTNAME/IP ADDRESS' 
+appliance_hostname = 'REPLACE_WITH_HOSTNAME/IP ADDRESS'
 # How many days old can the cached copy be?
 ACCEPTABLE_LAG = ONE_DAY * 4  # 4 days
 # SMTP server
@@ -116,11 +122,17 @@ try:
     urllib.quote_plus(url)
   print 'Accessing URL - %s ' %cached_url
   content = urllib2.urlopen(cached_url).read()
-  #print 'cached content is:\n %s' %content
+  # go past the header that is added by the search appliance.
+  cached_content = content[content.find('<hr>')+len('<hr>'):]
+  # first line of the content must be the current timestamp.
+  first_line = cached_content[:cached_content.find('<br>')].strip()
+  #print 'complete content from GSA is:\n%s' %content
+  #print 'cached content is:\n%s' %cached_content
+  #print 'first lime (timestamp) is:\n%s' %first_line
   try:
-    cached_time = int(re.search('[\d]*$',content).group())
+    cached_time = int(first_line)
   except:
-    raise ValueError('Did not find time in the cached copy. It is possible ' 
+    raise ValueError('Did not find time in the cached copy. It is possible '
       'that document has not yet been indexed. Please try accessing the URL '
       'directly. Here is the content I got :\n%s ' %content)
   current_time = int(time.time())
