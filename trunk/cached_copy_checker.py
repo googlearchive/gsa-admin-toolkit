@@ -29,6 +29,13 @@ the cached copy of the URL and compare the date in it with the current
 date. If there is a big difference, then the issue is worth investigating
 and the script will email you, otherwise everything is okay.
 
+The maximum frequency with which the URL on your web server can be
+recrawled is every 15 minutes, but recrawl may be less frequent if
+there is a queue of other URLs on the appliance. Note that it can take
+up to a week for the appliance to learn the change interval of your
+URL, so you will need to wait that long for the appliance to reach its
+maximum recrawl rate.
+
 HIGH LEVEL STEPS:
 
 1. Configure a URL on your web server that returns the current
