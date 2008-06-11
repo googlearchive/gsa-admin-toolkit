@@ -1,4 +1,4 @@
-#!/usr/bin/python2.4
+#!/usr/bin/python2.2
 #
 # Copyright (C) 2007 Google Inc.
 #
@@ -40,19 +40,19 @@ def main():
   period_type = interval[-1:]    # Grabbing the last character of the interval
                                  # to check for a specified period type
 
-  get_period = False    # Assume no period type
+  get_period = 0    # Assume no period type
   period_multiplier = 60    # Assume the period is in minutes
 
   if period_type == 'd':    # Days
-    get_period = True
+    get_period = 1
     period_multiplier = 86400
   elif period_type == 'h':    # Hours
-    get_period = True
+    get_period = 1
     period_multiplier = 3600
   elif period_type == 'm':    # Minutes
-    get_period = True
+    get_period = 1
   elif period_type == 's':    # Seconds
-    get_period = True
+    get_period = 1
     period_multiplier = 1
 
   if get_period:    # If there was a period type provided, we need to get the
@@ -89,7 +89,7 @@ def main():
     print "ERROR: Log file %s cannot be opened." % log_file
     sys.exit(2)
 
-  first_line = True    # On the first pass through the file, we'll always
+  first_line = 1    # On the first pass through the file, we'll always
                        # start with the first line.
 
   split_on = " "    # The input file could be a partnerlog file or a search log.
@@ -101,7 +101,7 @@ def main():
   response_field = 0    # Just like the date_field, the response_filed changes
                         # depending on the type of file we've received.  The
                         # response_field houes the HTTP response.
-  check_timing = False    # If we're parsing a partnerlog file, we can also
+  check_timing = 0    # If we're parsing a partnerlog file, we can also
                           # calculate the average response time for requests.
 
   line_count = 0    # line_count will contain the number of entries processed
@@ -118,19 +118,19 @@ def main():
         split_on = " "
         date_field = 3
         response_field = 8
-        check_timing = False
+        check_timing = 0
       elif len(((line.split())[0]).split('/')) == 3:
         # The log file entries start with a date, so we assume that it's a
         # partnerlog.  Set our correct field and split variables.
         date_field = 0
         response_field = 3
-        check_timing = True
+        check_timing = 1
         split_on = "\t"
       else:    # Dude!  What kind of file _is_ this?!?!
         print "ERROR: %s is not a search log or partnerlog" % log_file
         sys.exit(3)
 
-      first_line = False    # We're no longer at the first line of the file.
+      first_line = 0    # We're no longer at the first line of the file.
 
     items = line.split(split_on)    # Split the entries of this line into an
                                     # array.
