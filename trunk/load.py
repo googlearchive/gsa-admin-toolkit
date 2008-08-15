@@ -33,19 +33,17 @@
 #     --threads         Number of concurrent queries (default is 3)
 #
 # Sample output from a successful query:
-#   Tue Aug 14 08:48:26 2007: success: 0.1
+#   Fri Aug 15 13:19:43 2008: Thread-3: success: 0.3 secs query: foo
 #
 
 
 # TODO(jlowry):
-#  * Need to use logging code that is threadsafe to guarantee that each
-#    print statement gets on its own line.
-#  * Investigate why the script runs more queries than passed in through
-#    the input file, at high query loads. Possible multi-threading problem.
 #  * Would be good to send a fixed qps to a GSA.
 
 import getopt
 import httplib
+import logging
+import Queue
 import socket
 import string
 import sys
@@ -93,28 +91,21 @@ class Results(object):
 
 class Client(threading.Thread):
 
-  queries = []
-
-  def __init__(self, host, port, queries_filename, res):
+  def __init__(self, host, port, queries, res):
     threading.Thread.__init__(self)
     self.host = host
     self.port = port
     self.res = res
-    queries_file = open(queries_filename)
-    Client.queries = queries_file.readlines()
-    queries_file.close()
+    self.queries = queries
 
   def run(self):
-    while Client.queries:
-      self.lock.acquire()
-      if not Client.queries: return
-      q = Client.queries[0]
-      Client.queries = Client.queries [1:]
-      self.lock.release()
-      self.FetchContent(self.host, self.port, q.strip())
-
-  def setLock(self, l):
-    self.lock = l
+    while not self.queries.empty():
+      try:
+        q = self.queries.get()
+      except Queue.Empty:
+        return
+      else:
+        self.FetchContent(self.host, self.port, q.strip())
 
   def FetchContent(self, host, port, q):
     start_time = time.ctime(time.time())
@@ -138,20 +129,20 @@ class Client(threading.Thread):
         raise httplib.HTTPException(exc_value)
       timer_end = time.time()
       exec_time = timer_end - timer_start
-      print (("%s: %s: success: %.1f secs query: "
-              "%s") % (start_time, self.getName(), exec_time, q))
+      logging.info(("%s: %s: success: %.1f secs query: "
+                    "%s") % (start_time, self.getName(), exec_time, q))
       self.res.good_result_times.append(exec_time)
     except httplib.HTTPException, value:
-      print (("%s: %s: error: %s query: "
-              "%s") % (start_time, self.getName(), value, q))
+      logging.info(("%s: %s: error: %s query: "
+                    "%s") % (start_time, self.getName(), value, q))
       self.res.error_result_count += 1
     except socket.error, msg:
-      print "%s: %s: %s query: %s" % (start_time, self.getName(), msg, q)
+      logging.info("%s: %s: %s query: %s" % (start_time, self.getName(), msg, q))
       self.res.error_result_count += 1
     except:
       the_type, value, tb = sys.exc_info()
-      print "%s: %s: exception: %s %s query: %s" % (start_time, self.getName(),
-                                                    the_type, value, q)
+      logging.info("%s: %s: exception: %s %s query: %s" % (start_time, self.getName(),
+                                                           the_type, value, q))
       self.res.error_result_count += 1
 
 
@@ -181,17 +172,24 @@ if __name__ == "__main__":
     print "Must provide a hostname and queries filename"
     sys.exit(1)
 
-  lock = thread.allocate_lock()
+  queries = Queue.Queue()
+  queries_file = open(queries_filename)
+  for q in queries_file.readlines():
+    queries.put(q)
+  queries_file.close()
+
+  logging.basicConfig(level=logging.INFO,
+                      format="%(message)s")
+
   res = Results()
   thread_list = []
   while num_threads > 0:
-    c = Client(host, port, queries_filename, res)
+    c = Client(host, port, queries, res)
     thread_list.append(c)
-    c.setLock(lock)
     c.start()
     num_threads -= 1
 
   # Wait for all the threads to finish before printing the summary
   for t in thread_list:
     t.join()
-  print res.Summary()
+  logging.info(res.Summary())
