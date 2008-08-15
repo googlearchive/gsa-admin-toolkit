@@ -99,11 +99,11 @@ class Client(threading.Thread):
     self.queries = queries
 
   def run(self):
-    while not self.queries.empty():
+    while True:
       try:
-        q = self.queries.get()
+        q = self.queries.get(block=False)
       except Queue.Empty:
-        return
+        break
       else:
         self.FetchContent(self.host, self.port, q.strip())
 
