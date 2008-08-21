@@ -186,16 +186,6 @@ NT_TO_HTTPS_STATUS_MAP = {
 }
 
 
-# Gets rid of any bad PYTHONPATH if necessary
-BAD_PATHS = ['/usr/local/buildtools/current/sitecustomize']
-if 'PYTHONPATH' in os.environ:
-  paths = os.environ['PYTHONPATH'].split(':')
-  for badpath in BAD_PATHS:
-    if badpath in paths:
-      paths.remove(badpath)
-  os.environ['PYTHONPATH'] = ':'.join(paths)
-
-
 def Usage():
   """Returns help text.
   
