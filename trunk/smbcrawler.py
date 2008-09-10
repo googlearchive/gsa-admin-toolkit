@@ -23,13 +23,13 @@
 Name
    smbcrawler.py
 
-Description:
+Description
    Script for crawling Windows File Shares and extract URLs.
    This script uses local smbclient commands.
    The aim is to help Google Search Appliance and Google Mini users
    get their file shares crawled, with several approaches.
 
-Features:
+Features
  + crawls as anonymous (guest) or authenticated user.
  + accepts following URL formats: \\\\filer\\share\\ [smb:|unc:]//filer/share/
  + accepts URLs from XML Sitemaps, CSV, plain text files (and partial content)
@@ -43,7 +43,7 @@ Features:
 
  (**) See http://www.google.com/webmasters/tools/docs/en/protocol.html
 
-Examples:
+Examples
 
  - Crawl everything as guest/anonymous user under smb://filer/share/
    (and on \\host\share\ only \folder\ or only \another\file.txt)
@@ -76,6 +76,12 @@ Examples:
 
  - Take all URLs from XML sitemap and save unreachable ones:
    $ smbcrawler -I sitemap.xml -O unreachable.txt -G unreachable
+
+Known issues
+  None yet, feel free to report issues or feature requests to
+  http://code.google.com/p/gsa-admin-toolkit/issues/
+
+This script is not supported by Google.
 """
 
 __pychecker__ = 'no-argsused no-classattr'
@@ -651,15 +657,16 @@ class Report(object):
 
   def Save(self, config):
     """Saves the report to a XML, CSV or plain text file, accordingly to the
-       flags-driven configuration.
+    flags-driven configuration.
        
-       Only CSV includes status and size, XML and text include only URLs.
+    Only CSV includes status and size, XML and text include only URLs.
        
-       Args:
-         config, flag-drive configuration.
+    Args:
+      config: flag-drive configuration.
        
-       Raise:
-         Exception, a generice exception."""
+    Raise:
+      Exception: a generic exception.
+    """
 
     if config.output is None:
       config.output = '/dev/stdout'
@@ -686,9 +693,9 @@ class Report(object):
       if config.oformat == 'xml':
         fd.write('  <url>\n    <loc>%s</loc>\n  </url>\n' % url)
       elif config.oformat == 'csv':
-        fd.write(config.osep.join(["%s%s%s" % (config.oquot, data, config.oquot)
-                                   for data in (saxutils.escape(url),
-                                                doc.HttpStatus(), doc.list_size)]) + '\n')
+        fd.write(config.osep.join(
+            ["%s%s%s" % (config.oquot, data, config.oquot) for data in (
+                saxutils.escape(url), doc.HttpStatus(), doc.list_size)]) + '\n')
       elif config.oformat == 'txt':
         fd.write('%s\n' % url)
       else:
