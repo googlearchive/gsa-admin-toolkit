@@ -26,6 +26,7 @@
 #    using the Authn/Authz SPI.
 #
 # TODO(jlowry): HTTPS support (http://pypi.python.org/pypi/ssl/)
+"""The reverse_proxy.py module implements a reverse proxy for the GSA."""
 
 import asynchat
 import asyncore
@@ -45,7 +46,14 @@ QUEUE = None
 
 
 class Queue(object):
-  """Class that represents the queue of requests to be sent to the server."""
+  """Class that represents the queue of requests to be sent to the server.
+
+  Instance variables:
+    queue: a list of ClientConnection objects, the requests
+      waiting for the server.
+    open_conns: a dictionary with key as the ID of the ClientConnection
+      object and value as the time the request was sent to the server.
+  """
 
   def __init__(self, host, port, max_conns):
     """Initializes the queue to hold requests to send to the server.
@@ -71,6 +79,7 @@ class Queue(object):
       request: a ClientConnection object, representing an HTTP request.
     """
     logging.debug("request %x added to queue" % (request.id))
+    request.queue_start = time.time()
     self.queue.append(request)
     self.Process()
 
@@ -83,13 +92,15 @@ class Queue(object):
       * There are requests in the queue waiting to be sent
     """
     logging.debug("processing queue")
+    logging.info("current open connections: %d" % (len(self.open_conns)))
+    logging.info("current queue length: %d" % (len(self.queue)))
     while len(self.open_conns) < self.max_conns:
-      logging.debug("current open connections: %d" % (len(self.open_conns)))
       if not self.queue:
         logging.debug("queue is empty")
         break
-      request = self.queue.pop()
-      logging.debug("request %x dequeued" % (request.id))
+      request = self.queue.pop(0)
+      logging.info("request %x dequeued after time in queue: %f secs" %
+                   (request.id, time.time() - request.queue_start))
       request.server_conn = ServerConnection(request)
       request.server_conn.push(request.buffer)
 
@@ -152,6 +163,9 @@ class ReverseProxy(asyncore.dispatcher):
     try:
       ClientConnection(conn)
     except:
+      # We don't specify an exception type because we need to
+      # catch everything to prevent the ReverseProxy instance
+      # from dieing from an uncaught exception.
       exc_type, exc_value, exc_traceback = sys.exc_info()
       trace_str = traceback.format_tb(exc_traceback, None)
       logging.info("client_conn failed: %s" % (exc_value[1]))
@@ -159,13 +173,23 @@ class ReverseProxy(asyncore.dispatcher):
 
 
 class HTTPConnection(asynchat.async_chat):
-  """Abstract class representing an HTTP connection.
+  """Abstract class representing either an HTTP request or response.
 
   Must be subclassed by a class that implements the DoRewrite() and
-  LogRequest methods.
+  LogRequest() methods.
+
+  Instance variables:
+    buffer: a string, the contents of the HTTP request or response.
   """
 
   def __init__(self, the_id, conn=None):
+    """Initialize the HTTP connection.
+
+    Args:
+      the_id: an integer, an ID for the connection which is used by Queue to
+        reference a specific connection.
+      conn: a Socket, the socket object for the connection.
+    """
     asynchat.async_chat.__init__(self, conn)
     self.conn = conn
     self.id = the_id
@@ -173,9 +197,11 @@ class HTTPConnection(asynchat.async_chat):
     self.set_terminator(HEADER_SEPARATOR)
 
   def Rewrite(self):
+    """Calls DoRewrite() to allow rewriting of the HTTP request or response."""
     self.DoRewrite()
 
   def found_terminator(self):
+    """Perform actions at appropriate points for requests and responses."""
     logging.debug("found_terminator %x" % (self.id))
     if self.get_terminator() == HEADER_SEPARATOR:
       self.buffer += HEADER_SEPARATOR
@@ -199,10 +225,16 @@ class HTTPConnection(asynchat.async_chat):
         self.handle_close()
 
   def collect_incoming_data(self, data):
+    """Called when HTTP request or response is receiving data.
+
+    Args:
+      data: a string, the data that is received.
+    """
     logging.debug("http_connection %x collect_incoming_data" % (self.id))
     self.buffer += data
 
   def ExceptionHandler(self):
+    """An exception handler that can be called if an exception occurs."""
     exc_type, exc_value, exc_traceback = sys.exc_info()
     trace_str = traceback.format_tb(exc_traceback, None)
     logging.info("exception: %s" % (exc_value[1]))
@@ -210,16 +242,32 @@ class HTTPConnection(asynchat.async_chat):
 
 
 class ClientConnection(HTTPConnection):
+  """Class representing the HTTP connection from the client in a reverse proxy.
+
+  Instance variables:
+    start_time: a float, timestamp when the client connection was set up.
+    queue_start: a float, timestamp when the request was queued for the server.
+    server_conn: a ServerConnection object, representing the HTTP connection
+      to the server associated with this connection from a client.
+  """
 
   def __init__(self, conn):
+    """Initialize an HTTP connection from a client to the proxy.
+
+    Args:
+      conn: a Socket, the socket object representing the connection.
+    """
     HTTPConnection.__init__(self, id(self), conn=conn)
     self.start_time = time.time()
+    self.queue_start = None
     logging.debug("client_conn %x init" % (self.id))
     self.server_conn = None
 
   def handle_close(self):
-    # This method does not appear to be called when the client connection
-    # is closed.
+    """Called when the connection to the client is closed.
+
+    This method is not normally called.
+    """
     logging.debug("client_conn %x handle_close" % (self.id))
     try:
       try:
@@ -236,6 +284,7 @@ class ClientConnection(HTTPConnection):
     pass
 
   def LogRequest(self):
+    """Logs the HTTP request."""
     ip, port = self.conn.getpeername()
     if self.buffer.startswith("GET") or self.buffer.startswith("POST"):
       request_lines = self.buffer.splitlines()
@@ -247,8 +296,15 @@ class ClientConnection(HTTPConnection):
 
 
 class ServerConnection(HTTPConnection):
+  """Class representing the HTTP connection from the proxy to the server."""
 
   def __init__(self, client_conn):
+    """Initializes a connection to the server.
+
+    Args:
+      client_conn: a ServerConnection object, representing the HTTP connection
+        to the client associated with this connection to the server.
+    """
     HTTPConnection.__init__(self, client_conn.id)
     logging.debug("server_conn %x init" % (self.id))
     self.client_conn = client_conn
@@ -262,9 +318,15 @@ class ServerConnection(HTTPConnection):
       self.handle_error()
 
   def handle_connect(self):
+    """Called when the connection to the server is made.
+
+    This method does nothing because the connection is set up
+    during init().
+    """
     logging.debug("server_conn %x handle_connect" % (self.id))
 
   def handle_error(self):
+    """Called when an exception occurs."""
     logging.debug("server_conn %x handle_error" % (self.id))
     time_str = time.strftime("%a, %d-%b-%Y %H:%M:%S GMT", time.gmtime())
     self.buffer = ("HTTP/1.x 503 Service unavailable\nDate: %s\n"
@@ -273,6 +335,7 @@ class ServerConnection(HTTPConnection):
     self.handle_close()
 
   def handle_close(self):
+    """Called when the connection to the server is closed."""
     logging.debug("server_conn %x handle_close" % (self.id))
     try:
       try:
@@ -291,10 +354,16 @@ class ServerConnection(HTTPConnection):
     pass
 
   def LogRequest(self):
+    """Should never be called since we don't log the request to the server."""
     logging.info("server_conn %x should never call log_request" % (self.id))
 
 
 def Usage():
+  """Usage information.
+
+  Returns:
+    A string, the usage instructions.
+  """
   return ("%s --bind_host=<listen-on-this-address> "
           "--remote_host=<send-requests-to-this-address> "
           "[--bind_port=<listen-on-this-port>] "
@@ -304,9 +373,9 @@ def Usage():
 
 def main():
   try:
-    opts, args = getopt.getopt(sys.argv[1:], None,
-                               ["bind_host=", "bind_port=", "remote_host=",
-                                "remote_port=", "max_conns=", "log_level="])
+    opts, unused_arg = getopt.getopt(
+        sys.argv[1:], None, ["bind_host=", "bind_port=", "remote_host=",
+                             "remote_port=", "max_conns=", "log_level="])
   except getopt.GetoptError:
     print Usage()
     sys.exit(1)
