@@ -15,9 +15,9 @@
 # limitations under the License.
 #
 # reverse_proxy.py is a reverse proxy for HTTP requests written in Python.
-# This code has not been extensively tested. It is intended as a proof-of-concept.
-# You should not use in production, without more extensive testing.
-# It has the following features:
+# This code has not been extensively tested. It is intended as a
+# proof-of-concept. You should not use in production, without more
+# extensive testing. It has the following features:
 #
 #  * Queues HTTP requests before sending to the web server. Can prevent
 #    overloading a search appliance with too many concurrent requests.
@@ -25,8 +25,7 @@
 #    troubleshoot connections between two servers, for example when
 #    using the Authn/Authz SPI.
 #
-# TODO(jlowry)
-#   HTTPS support (http://pypi.python.org/pypi/ssl/)
+# TODO(jlowry): HTTPS support (http://pypi.python.org/pypi/ssl/)
 
 import asynchat
 import asyncore
@@ -43,6 +42,7 @@ import traceback
 CONTENT_LENGTH_PATTERN = "content-length: *(\d+)"
 HEADER_SEPARATOR = "\r\n\r\n"
 QUEUE = None
+
 
 class Queue(object):
   """Class that represents the queue of requests to be sent to the server."""
@@ -106,7 +106,9 @@ class Queue(object):
     try:
       del self.open_conns[request_id]
     except KeyError:
-      logging.info("could not delete %s in %s" % (request_id, repr(self.open_conns)))
+      # For example, if request is not a valid HTTP request it will not be
+      # added to the queue, so cannot be deleted.
+      logging.debug("could not delete %x" % (request_id))
     self.Process()
 
   def StartConnection(self, request_id):
@@ -127,8 +129,15 @@ class Queue(object):
 
 
 class ReverseProxy(asyncore.dispatcher):
+  """Class that creates the listening socket for the reverse proxy."""
 
   def __init__(self, bindhost, bindport):
+    """Sets up the listening socket.
+
+    Args:
+      bindhost: a string, hostname for the server to run on.
+      bindport: an integer, port for the server to run on.
+    """
     asyncore.dispatcher.__init__(self)
     self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
     self.set_reuse_addr()
@@ -137,18 +146,24 @@ class ReverseProxy(asyncore.dispatcher):
     self.listen(10)
 
   def handle_accept(self):
+    """Accept an incoming connection from a client."""
     (conn, addr) = self.accept()
-    logging.info("reverse_proxy got connection from: %s:%s" % (addr[0], addr[1]))
+    logging.info("reverse_proxy connection from: %s:%s" % (addr[0], addr[1]))
     try:
       ClientConnection(conn)
     except:
-      exc, err_str, stack_trace = sys.exc_info()
-      trace_str = traceback.format_tb(stack_trace, None)
-      logging.error("client_conn failed: %s" % (err_str[1]))
-      logging.error("\n%-20s%s: %s" % ("".join(trace_str), exc, err_str))
+      exc_type, exc_value, exc_traceback = sys.exc_info()
+      trace_str = traceback.format_tb(exc_traceback, None)
+      logging.info("client_conn failed: %s" % (exc_value[1]))
+      logging.info("\n%-20s%s: %s" % ("".join(trace_str), exc_type, exc_value))
 
 
 class HTTPConnection(asynchat.async_chat):
+  """Abstract class representing an HTTP connection.
+
+  Must be subclassed by a class that implements the DoRewrite() and
+  LogRequest methods.
+  """
 
   def __init__(self, the_id, conn=None):
     asynchat.async_chat.__init__(self, conn)
@@ -158,8 +173,7 @@ class HTTPConnection(asynchat.async_chat):
     self.set_terminator(HEADER_SEPARATOR)
 
   def Rewrite(self):
-    """Edit this method to rewrite requests or responses."""
-    pass
+    self.DoRewrite()
 
   def found_terminator(self):
     logging.debug("found_terminator %x" % (self.id))
@@ -171,13 +185,15 @@ class HTTPConnection(asynchat.async_chat):
         self.set_terminator(int(clen))
       else:
         self.set_terminator(None)
+        self.Rewrite()
         if self.conn:
-          self.Rewrite()
+          self.LogRequest()
           QUEUE.Add(self)
     else:
       self.set_terminator(None)
       self.Rewrite()
       if self.conn:
+        self.LogRequest()
         QUEUE.Add(self)
       else:
         self.handle_close()
@@ -186,21 +202,48 @@ class HTTPConnection(asynchat.async_chat):
     logging.debug("http_connection %x collect_incoming_data" % (self.id))
     self.buffer += data
 
+  def ExceptionHandler(self):
+    exc_type, exc_value, exc_traceback = sys.exc_info()
+    trace_str = traceback.format_tb(exc_traceback, None)
+    logging.info("exception: %s" % (exc_value[1]))
+    logging.info("\n%-20s%s: %s" % ("".join(trace_str), exc_type, exc_value))
+
 
 class ClientConnection(HTTPConnection):
 
   def __init__(self, conn):
     HTTPConnection.__init__(self, id(self), conn=conn)
+    self.start_time = time.time()
     logging.debug("client_conn %x init" % (self.id))
     self.server_conn = None
 
   def handle_close(self):
+    # This method does not appear to be called when the client connection
+    # is closed.
     logging.debug("client_conn %x handle_close" % (self.id))
     try:
-      self.server_conn.close()
-      QUEUE.EndConnection(self.id)
-    except: pass
-    self.close()
+      try:
+        if self.server_conn:
+          self.server_conn.close()
+        self.close()
+      finally:
+        QUEUE.EndConnection(self.id)
+    except socket.error:
+      self.ExceptionHandler()
+
+  def DoRewrite(self):
+    """Edit this method to rewrite self.buffer to change the requests."""
+    pass
+
+  def LogRequest(self):
+    ip, port = self.conn.getpeername()
+    if self.buffer.startswith("GET") or self.buffer.startswith("POST"):
+      request_lines = self.buffer.splitlines()
+      logging.info("request %x from %s:%s: %s" %
+                   (self.id, ip, port, request_lines[0]))
+    else:
+      logging.info("request %x invalid from %s:%s:\n%s\n" %
+                   (self.id, ip, port, self.buffer))
 
 
 class ServerConnection(HTTPConnection):
@@ -213,29 +256,42 @@ class ServerConnection(HTTPConnection):
     dest = QUEUE.StartConnection(self.id)
     try:
       self.connect(dest)
-    except:
-      exc, err_str, stack_trace = sys.exc_info()
-      trace_str = traceback.format_tb(stack_trace, None)
-      logging.error("server_conn failed: %s" % (err_str[1]))
-      logging.error("\n%-20s%s: %s" % ("".join(trace_str), exc, err_str))
+    except socket.error:
+      logging.debug("server_conn %x calling handle_error" % (self.id))
+      self.ExceptionHandler()
       self.handle_error()
 
   def handle_connect(self):
     logging.debug("server_conn %x handle_connect" % (self.id))
 
   def handle_error(self):
+    logging.debug("server_conn %x handle_error" % (self.id))
     time_str = time.strftime("%a, %d-%b-%Y %H:%M:%S GMT", time.gmtime())
     self.buffer = ("HTTP/1.x 503 Service unavailable\nDate: %s\n"
-                   "Server: GSA_Reverse_Proxy\r\n\r\nRequest failed."
+                   "Server: GSA_Reverse_Proxy\r\n\r\nService unavailable.\n"
                    % (time_str))
     self.handle_close()
 
   def handle_close(self):
     logging.debug("server_conn %x handle_close" % (self.id))
-    QUEUE.EndConnection(self.id)
-    self.client_conn.push(self.buffer)
-    self.client_conn.close_when_done()
-    self.close()
+    try:
+      try:
+        self.client_conn.push(self.buffer)
+        logging.info("request %x took %f secs" %
+                     (self.id, time.time() - self.client_conn.start_time))
+        self.client_conn.close_when_done()
+        self.close()
+      finally:
+        QUEUE.EndConnection(self.id)
+    except socket.error:
+      self.ExceptionHandler()
+
+  def DoRewrite(self):
+    """Edit this method to rewrite self.buffer to change the responses."""
+    pass
+
+  def LogRequest(self):
+    logging.info("server_conn %x should never call log_request" % (self.id))
 
 
 def Usage():
@@ -250,7 +306,7 @@ def main():
   try:
     opts, args = getopt.getopt(sys.argv[1:], None,
                                ["bind_host=", "bind_port=", "remote_host=",
-                                "remote_port=", "max_conns="])
+                                "remote_port=", "max_conns=", "log_level="])
   except getopt.GetoptError:
     print Usage()
     sys.exit(1)
@@ -260,6 +316,7 @@ def main():
   max_conns = 5
   bind_host = None
   remote_host = None
+  level = logging.INFO
   for opt, arg in opts:
     if opt == "--bind_host":
       bind_host = arg
@@ -271,12 +328,15 @@ def main():
       remote_port = int(arg)
     if opt == "--max_conns":
       max_conns = int(arg)
+    if opt == "--log_level":
+      if arg.lower() == "debug":
+        level = logging.DEBUG
 
   if not bind_host or not remote_host:
     print Usage()
     sys.exit(1)
 
-  logging.basicConfig(level=logging.DEBUG, format="%(asctime)-15s %(message)s")
+  logging.basicConfig(level=level, format="%(asctime)-15s %(message)s")
   resource.setrlimit(resource.RLIMIT_NOFILE, (1024, 1024))
   global QUEUE
   QUEUE = Queue(remote_host, remote_port, max_conns)
