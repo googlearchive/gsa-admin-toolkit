@@ -90,6 +90,15 @@ class Queue(object):
       * The number of open connections to the server is less than the maximum
         allowable.
       * There are requests in the queue waiting to be sent
+
+    We would like to find a way to detect if the client has closed the socket,
+    so that we don't have to send requests to the server if the client is no
+    longer interested in the results. It appears that the only reliable way to
+    do this is to send data to the client and wait to see if it is ACK'd. There
+    doesn't seem to be a way to determine quickly if a socket is closed by the
+    remote end of the connection. Given that the reverse proxy will generally
+    be called by an application, we may be able to write a handler for a
+    specific string sent by the client which will trigger closing the socket.
     """
     logging.debug("processing queue")
     logging.info("current open connections: %d" % (len(self.open_conns)))
@@ -176,7 +185,7 @@ class HTTPConnection(asynchat.async_chat):
   """Abstract class representing either an HTTP request or response.
 
   Must be subclassed by a class that implements the DoRewrite() and
-  LogRequest() methods.
+  Log() methods.
 
   Instance variables:
     buffer: a string, the contents of the HTTP request or response.
@@ -212,14 +221,14 @@ class HTTPConnection(asynchat.async_chat):
       else:
         self.set_terminator(None)
         self.Rewrite()
+        self.Log()
         if self.conn:
-          self.LogRequest()
           QUEUE.Add(self)
     else:
       self.set_terminator(None)
       self.Rewrite()
+      self.Log()
       if self.conn:
-        self.LogRequest()
         QUEUE.Add(self)
       else:
         self.handle_close()
@@ -266,9 +275,11 @@ class ClientConnection(HTTPConnection):
   def handle_close(self):
     """Called when the connection to the client is closed.
 
-    This method is not normally called.
+    This method is only called when the server detects that
+    the client connection has been closed unexpectedly.
+    In normal cases, this method is not called.
     """
-    logging.debug("client_conn %x handle_close" % (self.id))
+    logging.info("client_conn %x closed unexpectedly" % (self.id))
     try:
       try:
         if self.server_conn:
@@ -283,7 +294,7 @@ class ClientConnection(HTTPConnection):
     """Edit this method to rewrite self.buffer to change the requests."""
     pass
 
-  def LogRequest(self):
+  def Log(self):
     """Logs the HTTP request."""
     ip, port = self.conn.getpeername()
     if self.buffer.startswith("GET") or self.buffer.startswith("POST"):
@@ -353,9 +364,15 @@ class ServerConnection(HTTPConnection):
     """Edit this method to rewrite self.buffer to change the responses."""
     pass
 
-  def LogRequest(self):
-    """Should never be called since we don't log the request to the server."""
-    logging.info("server_conn %x should never call log_request" % (self.id))
+  def Log(self):
+    """Logs the HTTP response."""
+    request_lines = self.buffer.splitlines()
+    first_line = request_lines[0]
+    if first_line.find("HTTP") >= 0:
+      logging.info("response %x length: %d: %s" %
+                   (self.id, len(self.buffer), first_line))
+    else:
+      logging.info("response %x invalid:\n%s\n" % (self.id, self.buffer))
 
 
 def Usage():
