@@ -172,6 +172,7 @@ def import_config(base_url, cookie, import_password, import_filename):
   elif content.find("Configuration imported successfully") == -1:
     print "Import failed"
     sys.exit(2)
+  # else: print "Import successful"
 
 def export_config(base_url, cookie, export_password):
   request = urllib2.Request(base_url,
