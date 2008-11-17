@@ -1,4 +1,5 @@
 #!/usr/bin/python2.4
+# coding: utf-8
 #
 # http://gsa-admin-toolkit.googlecode.com/svn/trunk/smbcrawler.py
 #
@@ -19,7 +20,8 @@
 # This script is not supported by Google.
 # Tested with Python 2.4 on Ubuntu Linux 6.04 and Mac OS X 10.5
 
-"""
+"""Script for crawling Windows File Shares and extract URLs.
+
 Name
    smbcrawler.py
 
@@ -84,7 +86,7 @@ Known issues
 This script is not supported by Google.
 """
 
-__pychecker__ = 'no-argsused no-classattr'
+__pychecker__ = "no-argsused no-classattr"
 
 
 import commands
@@ -92,6 +94,7 @@ import datetime
 import getopt
 import getpass
 import os
+import re
 import sys
 import urllib
 from xml.parsers import expat
@@ -99,18 +102,18 @@ from xml.sax import saxutils
 
 
 # Global constants
-COMMAND_OPTIONS_SHORTCUTS = "W:U:P:I:L:f:s:q:F:O:G:M:D:h"
+COMMAND_OPTIONS_SHORTCUTS = "C:W:U:P:I:L:f:s:q:F:O:G:M:D:h"
 COMMAND_OPTIONS_WITH_SHORTCUTS = [
     "help", "noprompt", "debug=", "workgroup=", "username=", "input=",
-    "output=", "password=", "groups=", "maxdepth="]
+    "output=", "password=", "groups=", "maxdepth=", "client="]
 COMMAND_OPTIONS_WITHOUT_SHORTCUT = [
     "iformat=", "ilines=", "ifield=", "isep=", "iquot=", "oformat=", "olines=",
     "ofield=", "osep=", "oquot="]
 COMMAND_OPTIONS = (COMMAND_OPTIONS_WITH_SHORTCUTS +
                    COMMAND_OPTIONS_WITHOUT_SHORTCUT)
 DEFAULT_CSV_FIELD = 1
-DEFAULT_CSV_SEPARATOR = ','
-DEFAULT_CSV_QUOTATION = ''
+DEFAULT_CSV_SEPARATOR = ","
+DEFAULT_CSV_QUOTATION = ""
 DEFAULT_OPTIONS = {
     "debug": 0,
     "maxdepth": -1,
@@ -120,11 +123,16 @@ DEFAULT_OPTIONS = {
     "ofield": DEFAULT_CSV_FIELD,
     "osep": DEFAULT_CSV_SEPARATOR,
     "oquot": DEFAULT_CSV_QUOTATION,
+    "client": "smbclient"
 }
-SHORT_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+SHORT_MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 USAGE_TEXT = """Usage %s [OPTIONS] [[smb:|unc:]//server/share/path/to/file]
 
+  -C,--client: smbclient, smbhelper or full path to binary
+     Binary basename must match regex ^(smbclient|smbhelper)(.exe)?$
+     Google Search Appliance 4.6 uses smbclient, 5.0 uses smbhelper from
+     http://google-search-appliance-mirror.googlecode.com/files/
   -W,--workgroup: crawler workgroup
   -U,--username: crawler username
   -P,--password: crawler password (leave blank for prompt)
@@ -190,6 +198,38 @@ NT_TO_HTTPS_STATUS_MAP = {
     "NT_STATUS_USER_SESSION_DELETED": 401,
     "NT_STATUS_VIRTUAL_CIRCUIT_CLOSED": 500,
 }
+NT_STATUS_FROM_SMBHELPER = {
+    "Permission denied": "NT_STATUS_ACCESS_DENIED",
+    "No such file or directory": "NT_STATUS_NO_SUCH_FILE",
+}
+URL_UNSAFE_CHARS = {
+    " ": "%20",
+    "º": "%BA",
+    "ª": "%AA",
+    "!": "%21",
+    "|": "%7C",
+    "\"": "%22",
+    "·": "%B7",
+    "#": "%23",
+    "$": "%24",
+    "~": "%7E",
+    "&": "%26",
+    "(": "%28",
+    ")": "%29",
+    "=": "%3D",
+    "'": "%27",
+    "?": "%3F",
+    "¡": "%A1",
+    "¿": "%BF",
+    "`": "%60",
+    "^": "%5E",
+    "[": "%5B",
+    "]": "%5D",
+    "{": "%7B",
+    "}": "%7D",
+    "<": "%3C",
+    ">": "%3E",
+}
 
 
 def Usage():
@@ -197,15 +237,17 @@ def Usage():
   
   Args:
     none
+
   Returns:
-    help text."""
+    help text.
+  """
 
   return USAGE_TEXT % (sys.argv[0], DEFAULT_CSV_FIELD,
                        DEFAULT_CSV_SEPARATOR, DEFAULT_CSV_QUOTATION)
 
 
 def UrlEncode(url):
-  """Applies URL encoding to dangerous characters.
+  """Applies URL encoding to URL-unsafe characters.
   
   Only for character that may let filenames inject shell commands.
   
@@ -213,9 +255,28 @@ def UrlEncode(url):
     url: potentially with dangerous characters.
   
   Returns:
-    same URL after URL-encoding: ' ; " ."""
+    same URL after URL-encoding.
+  """
 
-  return url.replace("'", "%27").replace(";", "%3B").replace('"', "%22")
+  for k, v in URL_UNSAFE_CHARS.iteritems():
+    url = url.replace(k, v)
+  return url
+#  return url.replace("'", "%27").replace(";", "%3B").replace('"', "%22")
+
+
+def UrlDecode(url):
+  """Reverts URLEncode effect.
+  
+  Args:
+    url: potentially without dangerous characters.
+  
+  Returns:
+    same URL after URL-decoding.
+  """
+
+  for k, v in URL_UNSAFE_CHARS.iteritems():
+    url = url.replace(v, k)
+  return url
 
 
 def UrlEscape(url):
@@ -225,9 +286,10 @@ def UrlEscape(url):
     url: potentially with XML invalid characters.
   
   Returns:
-    same URL after replacing those with XML entities."""
+    same URL after replacing those with XML entities.
+  """
 
-  return url.replace("'", "&apos;").replace("'", '&quot;')
+  return url.replace("'", "&apos;").replace("'", "&quot;")
 
 
 def UrlUnscape(url):
@@ -237,29 +299,31 @@ def UrlUnscape(url):
     url: potentially with XML entities.
   
   Returns:
-    same URL after unscaping XML entities."""
+    same URL after unscaping XML entities.
+  """
 
-  return url.replace("&amp;", "&").replace("&apos;", "'").replace("&quot;", '"')
+  return url.replace("&amp;", "&").replace(
+      "&apos;", "'").replace("&quot;", "\"")
 
 
 class SitemapParser(object):
   """Parses XML Sitemaps but takes only URLs and ignores the rest."""
 
-  def __init__(self, input):
+  def __init__(self, input_file):
     """Parses an input file."""
     self.url = None
     self.opentag = None
     
     def StartElement(name, attrs):
-      self.url = ''
+      self.url = ""
       self.opentag = name
 
     def CharData(data):
-      if self.opentag == 'loc':
+      if self.opentag == "loc":
         self.url += data
 
     def EndElement(name):
-      if self.opentag == 'loc':
+      if self.opentag == "loc":
         self.urls.append(self.url)
       self.opentag = None
     self.urls = []
@@ -267,7 +331,7 @@ class SitemapParser(object):
     self.p.StartElementHandler = StartElement
     self.p.CharacterDataHandler = CharData
     self.p.EndElementHandler = EndElement
-    fd = open(input, 'r')
+    fd = open(input_file, "r")
     data = fd.read()
     self.p.Parse(data, 1)
     fd.close()
@@ -280,7 +344,7 @@ class Config(object):
     """Create a new config instance and parses input if any."""
 
     for option in COMMAND_OPTIONS:
-      if option[-1] == '=':
+      if option[-1] == "=":
         self.__setattr__(option[:-1], None)
       else:
         self.__setattr__(option, False)
@@ -300,24 +364,24 @@ class Config(object):
       print Usage()
       sys.exit(1)
     for opt, arg in opts:
-      if opt in ('-h', '--help'):
+      if opt in ("-h", "--help"):
         print Usage()
         sys.exit(0)
-      if opt == '-L':
+      if opt == "-L":
         self.ilines = self.olines = arg
-      if opt == '-f':
+      if opt == "-f":
         self.ifield = self.ofield = arg
-      if opt == '-s':
+      if opt == "-s":
         self.isep = self.osep = arg
-      if opt == '-q':
+      if opt == "-q":
         self.iquot = self.oquot = arg
-      if opt == '-F':
+      if opt == "-F":
         self.iformat = self.oformat = arg
       for option in COMMAND_OPTIONS:
-        option = option.split('=')[0]
-        flags = ['--%s' % option]
-        if option + '=' in COMMAND_OPTIONS_WITH_SHORTCUTS:
-          flags.append('-%s' % option[0].upper())
+        option = option.split("=")[0]
+        flags = ["--%s" % option]
+        if option + "=" in COMMAND_OPTIONS_WITH_SHORTCUTS:
+          flags.append("-%s" % option[0].upper())
         if opt in flags:
           if arg:
             self.__setattr__(option, arg)
@@ -325,35 +389,56 @@ class Config(object):
             self.__setattr__(option, True)
     # Check there is something to crawl
     if self.input is None and len(args) < 1:
-      print "\nMissing URLs to crawl, printing Usage information\n." % args
+      print "\nMissing URLs to crawl, printing Usage information\n" % args
+      print Usage()
+      sys.exit()
+    # Check if the client is valid and executable, takes the absolute path
+    regex = re.compile("^(smbclient|smbhelper)(.exe)?$")
+    if regex.match(os.path.basename(self.client)):
+      found = False
+      for path in ["."] + os.environ["PATH"].split(":"):
+        absclient = os.path.join(path, self.client)
+        if os.access(absclient, os.X_OK or os.R_OK):
+          found = True
+          self.client = absclient
+        if os.access(absclient + ".exe", os.X_OK or os.R_OK):
+          found = True
+          self.client = absclient + ".exe"
+      if found is False:
+        print "\nInvalid client parameter, %s not found in PATH\n" % self.client
+        print Usage()
+        sys.exit()
+    else:
+      print ("\nInvalid client parameter, "
+             "basename does not match ^(smbclient|smbhelper)(.exe)?$\n")
       print Usage()
       sys.exit()
     # Check for input file and format if any, defaults output format to TXT
     if self.input and self.iformat is None:
       if len(self.input) < 4:
-        self.iformat = 'txt'
+        self.iformat = "txt"
       else:
         ext = self.input[-3:].lower()
-        if self.input[-4] == '.' and ext in ('txt', 'csv', 'xml'):
+        if self.input[-4] == "." and ext in ("txt", "csv", "xml"):
           self.iformat = ext
         else:
-          self.iformat = 'txt'
+          self.iformat = "txt"
     # Check for output file and format if any, defaults output format to CSV
     if self.output and self.oformat is None:
       if len(self.output) < 4:
-        self.oformat = 'csv'
+        self.oformat = "csv"
       else:
         ext = self.output[-3:].lower()
-        if self.output[-4] == '.' and ext in ('txt', 'csv', 'xml'):
+        if self.output[-4] == "." and ext in ("txt", "csv", "xml"):
           self.oformat = ext
         else:
-          self.oformat = 'csv'
+          self.oformat = "csv"
     # Convert lines ranges to sequence
-    for attr in ('ilines', 'olines'):
+    for attr in ("ilines", "olines"):
       if self.__getattribute__(attr) is not None:
         lines = []
-        for token in self.__getattribute__(attr).split(','):
-          numbers = map(int, token.split('-'))
+        for token in self.__getattribute__(attr).split(","):
+          numbers = map(int, token.split("-"))
           if len(numbers) == 1:
             lines.append(numbers[0])
           elif len(numbers) == 2:
@@ -366,52 +451,54 @@ class Config(object):
         self.__setattr__(attr, lines)
     # Convert groups to sequence and make sure no one is repeated or redundant
     if self.groups is not None:
-      self.groups = dict.fromkeys(self.groups.split(',')).keys()
-      if self.groups.count('reachable'):
-        if self.groups.count('zerosize'):
-          self.groups.remove('zerosize')
-        if self.groups.count('sizemismatch'):
-          self.groups.remove('sizemismatch')
-      if self.groups.count('zerosize'):
-        if self.groups.count('sizemismatch'):
-          self.groups.remove('sizemismatch')
-      if self.groups.count('unreachable'):
-        if self.groups.count('logonfailure'):
-          self.groups.remove('logonfailure')
-        if self.groups.count('accessdenied'):
-          self.groups.remove('accessdenied')
-        if self.groups.count('notfound'):
-          self.groups.remove('notfound')
-        if self.groups.count('others'):
-          self.groups.remove('others')
+      self.groups = dict.fromkeys(self.groups.split(",")).keys()
+      if self.groups.count("reachable"):
+        if self.groups.count("zerosize"):
+          self.groups.remove("zerosize")
+        if self.groups.count("sizemismatch"):
+          self.groups.remove("sizemismatch")
+      if self.groups.count("zerosize"):
+        if self.groups.count("sizemismatch"):
+          self.groups.remove("sizemismatch")
+      if self.groups.count("unreachable"):
+        if self.groups.count("logonfailure"):
+          self.groups.remove("logonfailure")
+        if self.groups.count("accessdenied"):
+          self.groups.remove("accessdenied")
+        if self.groups.count("notfound"):
+          self.groups.remove("notfound")
+        if self.groups.count("others"):
+          self.groups.remove("others")
     # Show debug info
     self.debug = int(self.debug)
     self.maxdepth = int(self.maxdepth)
     if self.debug > 3:
       for option in COMMAND_OPTIONS:
-        option = option.split('=')[0]
+        option = option.split("=")[0]
         value = self.__getattribute__(option)
         if value:
           print "%s set to %s" % (option, value)
     # Prompt for password if necessary
     if self.username is not None and (
         self.password is None and self.noprompt is False):
-      self.password = getpass.getpass('Password: ')
+      self.password = getpass.getpass("Password: ")
     # Save the remainder as arguments
-    self.args = map(UrlEncode, map (urllib.unquote, args))
+    self.args = map (urllib.unquote, args)
+    #self.args = map(UrlEncode, map (urllib.unquote, args))
 
   def Shares(self):
     """Extracts the list of shares to crawl.
     
-  Returns:
-    shares: List of Share objects."""
+    Returns:
+      shares: List of Share objects.
+    """
 
     shares = []
     urls = self.args
 
     # Extract URLs from input file
     if self.input:
-      if self.iformat == 'xml':
+      if self.iformat == "xml":
         urls_from_xml = SitemapParser(self.input).urls
         if self.ilines:
           for i in range(len(urls_from_xml)):
@@ -419,8 +506,8 @@ class Config(object):
               urls.append(urls_from_xml[i])
         else:
           urls.extend(urls_from_xml)
-      elif self.iformat in ('csv', 'txt'):
-        fd = open(self.input, 'r')
+      elif self.iformat in ("csv", "txt"):
+        fd = open(self.input, "r")
         line_counter = 1
         for line in fd:
           if not self.ilines or line_counter in self.ilines:
@@ -442,10 +529,10 @@ class Config(object):
       share = None
       filename = None
       # Detect URL format
-      if url[:4] in ('smb:', 'unc:'):
+      if url[:4] in ("smb:", "unc:"):
         url = url[4:]
-      if url[:2] == '//':
-        slash = '/'   # Processing forward slashes
+      if url[:2] == "//":
+        slash = "/"   # Processing forward slashes
       elif url[:2] == '\\\\':
         slash = '\\'  # Processing backslashes
       else:
@@ -461,7 +548,7 @@ class Config(object):
       slash_2 = url.find(slash, slash_1 + 1)
       hostname = url[2:slash_1]
       share = url[slash_1 + 1: slash_2]
-      filename = '/' + url[slash_2 + 1:]
+      filename = "/" + url[slash_2 + 1:]
       shares.append(Share(hostname=hostname, share=share, filename=filename,
                           domain=self.workgroup, username=self.username,
                           password=self.password))
@@ -469,23 +556,26 @@ class Config(object):
 
 
 class Share(object):
+  """Holds minimal info about a single file share."""
 
   def __init__(self, **kwargs):
-    self.hostname = kwargs['hostname']
-    self.share = kwargs['share']
-    self.filename = kwargs.get('filename', '/')
+    self.hostname = kwargs["hostname"]
+    self.share = kwargs["share"]
+    self.filename = kwargs.get("filename", "/")
     # These defautl to None:
-    self.domain = kwargs.get('domain')
-    self.username = kwargs.get('username')
-    self.password = kwargs.get('password')
+    self.domain = kwargs.get("domain")
+    self.username = kwargs.get("username")
+    self.password = kwargs.get("password")
     # Compute initial directory depth
-    self.depth = self.filename.count('/') - 1
+    self.depth = self.filename.count("/") - 1
 
   def IsDirectory(self):
-    return self.filename[-1] == '/'
+    """Returns true iff the root is a directory."""
+    return self.filename[-1] == "/"
 
   def IsFile(self):
-    return self.filename[-1] != '/'
+    """Returns true iff the root is a file."""
+    return self.filename[-1] != "/"
 
   def __str__(self):
     str = "smb://%s/%s%s" % (self.hostname, self.share, self.filename)
@@ -494,60 +584,70 @@ class Share(object):
     if self.username:
       str += " as user '%s'" % self.username
     if self.password:
-      str += " with password '%s'" % ('*' * len(self.password),)
+      str += " with password '%s'" % ("*" * len(self.password),)
     return str
 
   def __repr__(self):
     return "smb://%s/%s%s" % (self.hostname, self.share, self.filename)
 
   def Url(self, filename=None):
+    """Returns the absolute smb URL for a file in this share."""
     if filename is None: filename = self.filename
     return "smb://%s/%s%s" % (self.hostname, self.share, filename)
 
   def Root(self):
+    """Returns the file share root diretory."""
     return "smb://%s/%s/" % (self.hostname, self.share)
 
 
 class Document(object):
+  """Holds minimal info about a single file file for reporting purposes."""
 
-  def __init__(self, share, filename=None, lastmod=None):
+  def __init__(self, share, filename=None, lastmod=None, status=None):
     self.share = share
     self.filename = filename
     if self.filename is None:
       self.filename = self.share.filename
     self.lastmod = lastmod
-    self.status = None
+    self.status = status
     self.real_size = None
     self.list_size = 0
 
   def __str__(self):
-    return "smb://%s/%s%s" % (
-        self.share.hostname, self.share.share, self.filename)
+    return self.Url()
 
   def Url(self):
+    """Returns the absolute smb URL."""
     return "smb://%s/%s%s" % (
         self.share.hostname, self.share.share, self.filename)
 
   def HttpStatus(self):
     """Map NT_STATUS_* to HTTP response codes.
 
-       Statuses from http://msdn.microsoft.com/en-us/library/cc202275.aspx"""
+    Statuses from http://msdn.microsoft.com/en-us/library/cc202275.aspx
+       
+    Returns:
+      HTTP response codes corresponding to NT_STATUS.
+    """
     if self.status is None:
-      if self.real_size != 0:
+      if not self.real_size:
         return 200
-      elif self.list_size == 0:
-        return 204
-      else:
+      elif self.list_size:
         return 401
+      else:
+        return 204
     return NT_TO_HTTPS_STATUS_MAP[self.status]
 
   def IsDirectory(self):
-    return self.filename[-1] == '/'
+    """Returns true iff the root is a directory."""
+    return self.filename[-1] == "/"
 
   def IsFile(self):
-    return self.filename[-1] != '/'
+    """Returns true iff the root is a file."""
+    return self.filename[-1] != "/"
 
   def Size(self):
+    """Returns file size, real_size if not zero, list_size otherwise."""
     if self.IsDirectory():
       return 0
     if self.real_size is not None:
@@ -560,23 +660,26 @@ class Document(object):
 
     Groups are reachable, zerosize, sizemismatch, unreachable, logonfailure,
     accessdenied, notfound, others.
+
+    Returns:
+      status groups matching the NT_STATUS message.
     """
     if self.status is None:
-      if self.real_size == 0:
-        return ['reachable', 'zerosize']
+      if not self.real_size:
+        return ["reachable", "zerosize"]
       elif self.real_size != self.list_size:
-        return ['reachable', 'zerosize', 'sizemismatch']
-      return ['reachable']
+        return ["reachable", "zerosize", "sizemismatch"]
+      return ["reachable"]
     else:
       if self.status in [
           "NT_STATUS_LOGON_FAILURE", "NT_STATUS_NO_SUCH_LOGON_SESSION"]:
-        return ['unreachable', 'logonfailure']
+        return ["unreachable", "logonfailure"]
       elif self.status in ["NT_STATUS_ACCESS_DENIED"]:
-        return ['unreachable', 'accessdenied']
+        return ["unreachable", "accessdenied"]
       elif self.status in [
           "NT_STATUS_NO_SUCH_DEVICE", "NT_STATUS_NO_SUCH_FILE",
           "NT_STATUS_OBJECT_NAME_NOT_FOUND", "NT_STATUS_OBJECT_PATH_NOT_FOUND"]:
-        return ['unreachable', 'notfound']
+        return ["unreachable", "notfound"]
       elif self.status in [
           "NT_STATUS_BAD_NETWORK_NAME", "NT_STATUS_BAD_NETWORK_PATH",
           "NT_STATUS_CONNECTION_DISCONNECTED", "NT_STATUS_CONNECTION_REFUSED",
@@ -591,8 +694,8 @@ class Document(object):
           "NT_STATUS_UNEXPECTED_NETWORK_ERROR",
           "NT_STATUS_UNMAPPABLE_CHARACTER",
           "NT_STATUS_USER_SESSION_DELETED", "NT_STATUS_VIRTUAL_CIRCUIT_CLOSED"]:
-        return ['unreachable', 'others']
-      return ['unreachable']
+        return ["unreachable", "others"]
+      return ["unreachable"]
 
 
 class Report(object):
@@ -611,7 +714,7 @@ class Report(object):
     """Prints the report in human-friendly format."""
 
     output = "Successfully crawled documents:\n"
-    for url, doc in self.urls_map.iteritems():
+    for doc in self.urls_map.values():
       if doc.status is None and doc.real_size not in (0, None):
         if doc.IsFile():
           output += " - %s  --  size %d\n" % (doc.Url(), doc.list_size)
@@ -638,12 +741,12 @@ class Report(object):
 
     for key, value in kwargs.iteritems():
       self.urls_map[url].__setattr__(key, value)
-    size = kwargs.get('real_size')
-    if size == 0:
+    size = kwargs.get("real_size")
+    if size is 0:
       self.zero_sized.append(url)
       if size != self.urls_map[url].list_size:
         self.size_mismatch.append(url)
-    status = kwargs.get('status')
+    status = kwargs.get("status")
     if status is not None:
       if status in self.status_map:
         self.status_map[status].append(url)
@@ -655,31 +758,41 @@ class Report(object):
       else:
         self.groups_map[group] = [url]
 
+  def Lookup(self, url):
+    """Returns the document object which URL is the one received.
+    
+    Args:
+      url: the URL to lookup for.
+    
+    Returns:
+      the document object.
+    """
+    return self.urls_map[url]
+
   def Save(self, config):
-    """Saves the report to a XML, CSV or plain text file, accordingly to the
-    flags-driven configuration.
+    """Saves the report to a file accordingly to the configuration.
        
     Only CSV includes status and size, XML and text include only URLs.
        
     Args:
       config: flag-drive configuration.
        
-    Raise:
+    Raises:
       Exception: a generic exception.
     """
 
     if config.output is None:
-      config.output = '/dev/stdout'
+      config.output = "/dev/stdout"
       if config.oformat is None:
         return
-    fd = open(config.output, 'w')
-    if config.oformat == 'xml':
+    fd = open(config.output, "w")
+    if config.oformat == "xml":
       fd.write(
-          '<?xml version="1.0" encoding="UTF-8"?>\n'
-          '<urlset xmlns="http://www.google.com/schemas/sitemap/0.84"\n'
-          '  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
-          '  xsi:schemaLocation="http://www.google.com/schemas/sitemap/0.84\n'
-          '  http://www.google.com/schemas/sitemap/0.84/sitemap.xsd">\n')
+          "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+          "<urlset xmlns=\"http://www.google.com/schemas/sitemap/0.84\"\n"
+          "  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n"
+          "  xsi:schemaLocation=\"http://www.google.com/schemas/sitemap/0.84\n"
+          "  http://www.google.com/schemas/sitemap/0.84/sitemap.xsd\">\n")
     # Check for groups
     if config.groups is None:
       urls = self.urls_map.keys()
@@ -690,29 +803,30 @@ class Report(object):
           urls.extend(self.groups_map[group])
     for url in urls:
       doc = self.urls_map[url]
-      if config.oformat == 'xml':
-        fd.write('  <url>\n    <loc>%s</loc>\n  </url>\n' % url)
-      elif config.oformat == 'csv':
+      if config.oformat == "xml":
+        fd.write("  <url>\n    <loc>%s</loc>\n  </url>\n" % url)
+      elif config.oformat == "csv":
         fd.write(config.osep.join(
             ["%s%s%s" % (config.oquot, data, config.oquot) for data in (
-                saxutils.escape(url), doc.HttpStatus(), doc.list_size)]) + '\n')
-      elif config.oformat == 'txt':
-        fd.write('%s\n' % url)
+                saxutils.escape(url), doc.HttpStatus(), doc.list_size)]) + "\n")
+      elif config.oformat == "txt":
+        fd.write("%s\n" % url)
       else:
         raise Exception("This should never happen!")
-    if config.oformat == 'xml':
-      fd.write('</urlset>\n')
+    if config.oformat == "xml":
+      fd.write("</urlset>\n")
     fd.close()
 
 
-def Crawl(config):
-  """Crawls a list of SMB file shares.
+def CrawlWithSmbclient(config):
+  """Crawls a list of SMB file shares, using smbclient.
   
   Args:
     config: Config object holding global configuration from commands flags
     
   Returns:
-    report: Report object holding the results from the crawling the shares"""
+    report: Report object holding the results from the crawling the shares.
+  """
 
   shares = config.Shares()
   if not shares:
@@ -722,18 +836,19 @@ def Crawl(config):
     print "Shares to crawl: \n - %s" % '\\\n - '.join([str(s) for s in shares])
   report = Report()
   for share in shares:
-    opts = ['-N']
+    # builds SMB client command using either smbclient
+    opts = ["-N"]
     if share.domain is not None:
-      opts.append('-W%s' % share.domain)
+      opts.append("-W%s" % share.domain)
     if share.username is not None:
       if share.password is not None:
-        opts.append("-U'%s%%%%%s'" % (share.username, share.password))
+        opts.append('-U"%s%%%%%s"' % (share.username, share.password))
       else:
-        opts.append("-U'%s'" % share.username)
+        opts.append('-U"%s"' % share.username)
     else:
-      opts.append('-Uguest')
-    smbclient = "smbclient %s //%s/%s -c'%%s'" % (
-        ' '.join(opts), share.hostname, share.share)
+      opts.append("-Uguest")
+    client = "%s %s //%s/%s -c'%%s'" % (
+        config.client, " ".join(opts), share.hostname, share.share)
     crawl_queue = [share.filename]
     crawled = []
     report.Add(Document(share))
@@ -745,34 +860,34 @@ def Crawl(config):
       file_url = share.Root() + filename[1:]
       if config.debug > 1:
         print "Trying %s" % share.Url(filename)
-      if filename[-1] == '/':
-        cmd = 'ls "%s*"' % filename.replace('/', '\\')
+      if filename[-1] == "/":
+        cmd = "ls \"%s*\"" % filename.replace("/", '\\')
       else:
-        cmd = 'get "%s" /dev/null' % filename.replace('/', '\\')
+        cmd = "get \"%s\" /dev/null" % filename.replace("/", '\\')
       if config.debug > 3:
-        print "Running command: %s" % (smbclient % cmd,)
-      status, output = commands.getstatusoutput(smbclient % cmd)
-      if filename[-1] == '/':
+        print "Running command: %s" % (client % cmd,)
+      status, output = commands.getstatusoutput(client % cmd)
+      if filename[-1] == "/":
         # Get filenames out of directory listing
-        for line in output.split('\n'):
-          if line[:2] == '  ' and line[2:4] != '..':
+        for line in output.split("\n"):
+          if line[:2] == "  " and line[2:4] != "..":
             parts = line.split()
-            timestamp = ':'.join((parts[-1], str(
+            timestamp = ":".join((parts[-1], str(
                 SHORT_MONTH_NAMES.index(parts[-4])+1), parts[-3], parts[-2]))
-            timestamp = datetime.datetime(*map(int, timestamp.split(':')))
+            timestamp = datetime.datetime(*map(int, timestamp.split(":")))
             size = int(parts[-6])
-            child = ' '.join(parts[:-6])
-            if child[-1] == 'D': child = child[:-2] + '/'   # Dirs
-            if child[-1] == 'A': child = child[:-2]         # Apps
-            if child[-1] == 'H': child = child[:-2]         # Hidden
-            if child[0] == '.':
+            child = " ".join(parts[:-6])
+            if child[-1] == "D": child = child[:-2] + "/"   # sript D attribute
+            regex = re.compile("^(A|H|S)(A|H|S)?(A|H|S)?$")
+            if regex.match(child[-1]): child = child[:-2]   # strip attributes
+            if child[0] == ".":
               doc = Document(share, filename, lastmod=timestamp)
               doc.list_size = doc.real_size = 4096   # Just to avoid zero-sized
               report.Add(doc)
               continue
-            path = UrlEncode(os.path.join(filename, child))
+            path = os.path.join(filename, child)
             if config.maxdepth != -1 and (
-                path[:-1].count('/') - share.depth) > config.maxdepth:
+                path[:-1].count("/") - share.depth) > config.maxdepth:
               continue
             doc = Document(share, path, lastmod=timestamp)
             crawl_queue.append(path)
@@ -781,7 +896,7 @@ def Crawl(config):
             report.Add(doc)
             if config.debug > 3:
               print "Found '%s' last modified %s" % (doc.Url(), doc.lastmod)
-          elif line[:3] == 'NT_':
+          elif line[:3] == "NT_":
             status = line.split()[0]
             if config.debug > 2:
               print "%s for %s" % (status, filename)
@@ -789,18 +904,18 @@ def Crawl(config):
           else:
             words = line.split()
             for error in words:
-              if error[:3] == 'NT_':
+              if error[:3] == "NT_":
                 report.Update(file_url, status=error)
       else:
         # Get result of downloading the file
-        for line in output.split('\n'):
-          if line[:7] == 'getting':
+        for line in output.split("\n"):
+          if line[:7] == "getting":
             parts = line.split()
-            size = int(parts[parts.index('size') + 1])
+            size = int(parts[parts.index("size") + 1])
             if config.debug > 2:
               print "%s has size %s" % (filename, size)
             report.Update(file_url, real_size=size)
-          elif line[:3] == 'NT_':
+          elif line[:3] == "NT_":
             error = line.split()[0]
             if config.debug > 2:
               print "%s for %s" % (error, filename)
@@ -808,9 +923,138 @@ def Crawl(config):
           else:
             words = line.split()
             for error in words:
-              if error[:3] == 'NT_':
+              if error[:3] == "NT_":
                 report.Update(file_url, status=error)
   return report
+
+
+def CrawlWithSmbhelper(config):
+  """Crawls a list of SMB file shares, using smbhelper.
+  
+  Args:
+    config: Config object holding global configuration from commands flags
+    
+  Returns:
+    report: Report object holding the results from the crawling the shares.
+  """
+  
+  shares = config.Shares()
+  if not shares:
+    print "No shares found!"
+    sys.exit(1)
+  if config.debug > 0:
+    print "Shares to crawl: \n - %s" % '\\\n - '.join([str(s) for s in shares])
+  report = Report()
+  for share in shares:
+    # builds SMB client command using smbhelper
+    opts = []
+    if share.domain is not None:
+      opts.append("--workgroup=%s" % share.domain)
+    if share.username is not None:
+      if share.password is not None:
+        opts.append("--username='%s' --password='%s'" % (
+            share.username, share.password))
+      else:
+        opts.append("--username='%s'" % share.username)
+    client = "%s %s --%%s --filename='%%s'" % (config.client, " ".join(opts))
+
+    crawl_queue = [share.filename]
+    crawled = []
+    report.Add(Document(share))
+    while crawl_queue:
+      filename = crawl_queue.pop()
+      while filename in crawled:
+        filename = crawl_queue.pop()
+      crawled.append(filename)
+      file_url = share.Root() + filename[1:]
+      if config.debug > 1:
+        print "Trying %s" % share.Url(filename)
+      if filename[-1] == "/":
+        op = "read_dir"
+      else:
+        op = "can_read"
+      cmd = client % (op, UrlEncode(file_url))
+      if config.debug > 3:
+        print "Running command: %s" % cmd
+      status, output = commands.getstatusoutput(cmd)
+      if filename[-1] == "/":
+        # Get filenames out of directory listing, unless permission is denied
+        for line in output.split("\n"):
+          if line[:6] == "Error:":
+            error = NT_STATUS_FROM_SMBHELPER[line.split(":")[-1].strip()]
+            if config.debug > 2:
+              print "%s returned error: %s" % (filename, error)
+            doc = Document(share, filename, status=error)
+            report.Add(doc)
+            continue
+          child, seconds, size = line.split()
+          timestamp = datetime.datetime(1970, 1, 1) + datetime.timedelta(
+              float(seconds) / (86400))
+          child = UrlDecode(child)
+          if size == "-":
+            child += "/"
+            size = 4096
+          else:
+            size = int(size)
+          if child == "../":
+            continue
+          if child == "./":
+            doc = Document(share, filename, lastmod=timestamp)
+            doc.list_size = doc.real_size = 4096   # Just to avoid zero-sized
+            report.Add(doc)
+            continue
+          path = filename + child   # filename already ends with /
+          if config.maxdepth != -1 and (
+              path[:-1].count("/") - share.depth) > config.maxdepth:
+            continue
+          doc = Document(share, path, lastmod=timestamp)
+          crawl_queue.append(path)
+          if doc.IsFile:
+            doc.list_size = size
+          report.Add(doc)
+          if config.debug > 3:
+            print "Found '%s' last modified %s" % (doc.Url(), doc.lastmod)
+      else:
+        # Get result of downloading the file
+        if not status:
+          doc = report.Lookup(file_url)
+          size = doc.list_size
+          if config.debug > 2:
+            print "%s has size %s" % (filename, size)
+          report.Update(file_url, real_size=size)
+          continue
+        for line in output.split("\n"):
+          # smbhelper is known to return these errors:
+          # Error: smbc_stat at "smbhelper.c":234: No such file or directory
+          # Error: smbc_opendir at "smbhelper.c":267: No such file or directory
+          # Error: smbc_opendir at "smbhelper.c":267: Permission denied
+          if line[:6] == "Error:":
+            error = NT_STATUS_FROM_SMBHELPER[line.split(":")[-1].strip()]
+            if config.debug > 2:
+              print "%s returned error: %s" % (filename, error)
+            doc = report.Lookup(file_url)
+            report.Update(file_url, status=error)
+          else:
+            print "\nTHIS SHOULD NEVER HAPPEN!\n"
+  return report
+
+
+def Crawl(config):
+  """Crawls a list of SMB file shares.
+  
+  Args:
+    config: Config object holding global configuration from commands flags
+    
+  Returns:
+    report: Report object holding the results from the crawling the shares.
+  """
+
+  regex = re.compile("^smbclient(.exe)?$")
+  if regex.match(os.path.basename(config.client)):
+    return CrawlWithSmbclient(config)
+  regex = re.compile("^smbhelper(.exe)?$")
+  if regex.match(os.path.basename(config.client)):
+    return CrawlWithSmbhelper(config)
 
 
 def main(argv):
@@ -824,5 +1068,5 @@ def main(argv):
     report.Save(config)
     print "Report written to '%s'." % config.output
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   main(sys.argv)
