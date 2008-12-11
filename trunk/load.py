@@ -38,7 +38,8 @@
 
 
 # TODO(jlowry):
-#  * Would be good to send a fixed qps to a GSA.
+#  * Would be good to send a fixed qps to a GSA using Python's
+#    built-in scheduler module.
 
 import getopt
 import httplib
@@ -146,6 +147,11 @@ class Client(threading.Thread):
       self.res.error_result_count += 1
 
 
+def usage():
+  return ("load.py --queries=<queries-filename> --host=<gsa-hostname> "
+          "[--threads=<num-threads>] [--port=<gsa-port>]")
+
+
 if __name__ == "__main__":
 
   num_threads = 3
@@ -156,7 +162,7 @@ if __name__ == "__main__":
     opts, args = getopt.getopt(sys.argv[1:], None,
                                ["host=", "port=", "threads=", "queries="])
   except getopt.GetoptError:
-    print "Invalid arguments"
+    print usage()
     sys.exit(1)
   for opt, arg in opts:
     if opt == "--host":
@@ -169,7 +175,7 @@ if __name__ == "__main__":
       port = arg
 
   if not host or not queries_filename:
-    print "Must provide a hostname and queries filename"
+    print usage()
     sys.exit(1)
 
   queries = Queue.Queue()
