@@ -1,9 +1,57 @@
 #!/bin/sh
-# autoadmin - for automating the pressing or clicking of buttons in the
+#   autoadmin - for automating the pressing or clicking of buttons in the
 #   GSA Administrative Interface
+
+#####
+#
+# VERSION HISTORY
+#
+# Version 1.1 by Gregg Bloom for Google on 2009.02.02
+#    + Added HTTP/HTTPS switch
+#    + Added example
 # Version 1.0 by Gregg Bloom for Google on 2007.09.17
-# Released under Apache License, Version 2.0
-#   http://www.apache.org/licenses/LICENSE-2.0.html
+#
+#####
+
+#####
+#
+# LICENSING
+#
+# Copyright (C) 2009 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+#####
+
+#####
+#
+# USAGE
+#
+# Name
+#   autoadmin.sh
+#
+# Description:
+#   Shell script that gets a cookie for accessing the Admin Console and then
+#   uses that cookie for authorization to make changes to Admin Console
+#   settings.
+#
+# Usage:
+#   autoadmin.sh
+#
+#   Note that there are no command-line arguments.  All settings are made by
+#   modifying configuraiton values in this script.
+#
+#####
 
 #####
 #
@@ -16,6 +64,8 @@
 #   the lastest stable version of curl, 7.19.3, should work fine, and it can
 #   be downloaded from http://curl.haxx.se/.
 #
+#####
+
 #####
 #
 # NOTES
@@ -69,7 +119,9 @@ GSA_ADMIN_SUBMIT_PAGE=''
 # GSA_ADMIN_SUBMIT_PAGE='/EnterpriseController?actionType=httpHeaders&userAgent=gsa-crawler-myip&addHTTPHdrs=&httpHeadersSave=Update%20Header%20Settings'
 # Yeah, it's a pretty silly example, but it at least demonstrates how you can
 # parse through the HTML of any Admin page in order to find all the form
-# values you need and then add those values as GET parameters.
+# values you need and then add those values as GET parameters.  
+#
+#####
 
 #####
 #
@@ -77,7 +129,6 @@ GSA_ADMIN_SUBMIT_PAGE=''
 #      Make a backup before altering anything below here.
 #      You know... just in case.
 #
-#####
 
 TMP=${TEMPORARY_FILE_LOCATION}
 CURL=${CURL_EXECUTABLE_LOCATION}
@@ -106,3 +157,6 @@ ${CURL} -b ${TMPFILE} -c ${TMPFILE} -s -d actionType=authenticateUser -d userNam
 ${CURL} -b ${TMPFILE} -c ${TMPFILE} -s "${PROTOCOL}://${GSA}:${PORT}${ADMIN_URL}" > /dev/null
 
 rm ${TMPFILE}
+
+#
+#####
