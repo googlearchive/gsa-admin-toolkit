@@ -14,8 +14,32 @@
 
 """Classes for administering the Google Search Appliance.
 
+Currently, the classes available can be used to import/export/rewrite
+the config file. This module is designed to be expandable so that
+other functionality can be easily included.
+
 gsaConfig: Class for handling XML from GSA export/import.
 gsaWebInterface: Class for interacting with GSA Web Interface.
+
+Example usage:
+
+1. Export the config file:
+
+gsa.py -n <host> --port 8000 -u admin -p <pw> -e --sign-password
+hellohello -f ~/tmp/o.xml -v
+
+2. Make a change to the config file and sign:
+
+./gsa.py -s --sign-password hellohello -f ~/tmp/o.xml -v -o ~/tmp/o2.xml
+
+3. Import the new config file:
+
+./gsa.py -n <host> --port 8000 -u admin -p <pw> -i --sign-password
+hellohello -f ~/tmp/o2.xml -v
+
+Note that you must use the same password to sign a file that you used
+when exporting. You will get an error when importing if you do not do
+this.
 """
 
 __author__ = "alastair@mcc-net.co.uk (Alastair McCormack)"
