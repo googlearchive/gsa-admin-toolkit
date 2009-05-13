@@ -1,0 +1,116 @@
+<?xml version="1.0"?>
+<!DOCTYPE html
+     PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Simple form for removing URLs using a feed</title>
+  <script type="text/javascript">
+  //<![CDATA[
+  function buildFeed(header, records, footer) {
+    var records_xml = '';
+    var rl = records.length;
+    for (r = 0; r < rl; r++) {
+      if (records[r].length != 0) {
+        records_xml += '    <record url="' + records[r] + '" />\n';
+      }
+    }
+    return header + records_xml + footer;
+  }
+  function recrawlURLs() {
+    var feed_type = document.getElementById('feed_type');
+    var feed_datasource = document.getElementById('feed_datasource');
+    var feed_textarea = document.getElementById('feed_textarea');
+    var urls_textarea = document.getElementById('urls_textarea');
+    feed_datasource.value = 'web';
+    feed_type.value = 'incremental';
+    header = '<?xml version="1.0" encoding="iso-8859-1"?>\n' +
+             '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">\n' +
+             '<gsafeed>\n' +
+             '  <header>\n' +
+             '    <datasource>' + feed_datasource.value + '</datasource>\n' +
+             '    <feedtype>' + feed_type.value + '</feedtype>\n' +
+             '  </header>\n' +
+             '  <group>\n';
+    footer = '  </group>\n</gsafeed>';
+    feed_textarea.value = buildFeed(header,
+                                    urls_textarea.value.split('\n'),
+                                    footer);
+    submitForm();
+  }
+  function removeURLs() {
+    var feed_type = document.getElementById('feed_type');
+    var feed_datasource = document.getElementById('feed_datasource');
+    var feed_textarea = document.getElementById('feed_textarea');
+    var urls_textarea = document.getElementById('urls_textarea');
+    feed_datasource.value = 'remove-urls';
+    feed_type.value = 'incremental';
+    header = '<?xml version="1.0" encoding="iso-8859-1"?>\n' +
+             '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">\n' +
+             '<gsafeed>\n' +
+             '  <header>\n' +
+             '    <datasource>' + feed_datasource.value + '</datasource>\n' +
+             '    <feedtype>' + feed_type.value + '</feedtype>\n' +
+             '  </header>\n' +
+             '  <group action="delete">\n';
+    footer = '  </group>\n</gsafeed>';
+    feed_textarea.value = buildFeed(header,
+                                    urls_textarea.value.split('\n'),
+                                    footer);
+    submitForm();
+  }
+  function submitForm() {
+    var feed_form = document.getElementById('feed_form');
+    var appliance = document.getElementById('appliance_input').value;
+    feed_form.action = "http://" + appliance + ":19900/xmlfeed"
+    feed_form.submit();
+  }
+  //-->
+  </script>
+  </head>
+  <body>
+	<div style="margin: 0 auto; width: 720px;">
+   <h2>Remove or recrawl URLs by sending an XML feed</h2>
+	 <p>This forms generates an XML feed for the Google Search Appliance,
+	 which will tell the appliance to remove or recrawl the provided URLs.</p>
+	 <ol>
+	 <li>Enter the <b>Appliance hostname or IP address</b>, no port is necessary --it always POSTs to port 19900.</li>
+	 <li>Enter URLs into the <b>URLs to remove/recrawl</b> text box, one URL per line, no comments are allowed.</li>
+	 <li>Press the appropriate button:
+	 	<ul>
+	   <li><b>Remove them</b> will submit an incremental content feed (datasource <tt>remove-urls</tt>) with
+		 one record per URL, all in a group with <tt>action="delete"</tt> to remove them from the index.</li>
+	   <li><b>Recrawl them</b> will submit a web feed (datasource <tt>web</tt>) with
+		 one record per URL, with no meta data to inject them in the crawl queue.</li>
+	 	</ul>
+	 </li>
+	 </ol>
+	 <p>Read the <a href="http://code.google.com/apis/searchappliance/documentation/52/feedsguide.html"
+	 >Feeds Protocol Developer's Guide</a> to learn more about how this works.</p>
+    <form name="urls" id="urls_form" action="#">
+      <p>Appliance hostname or IP address:
+        <input type="text" name="appliance" id="appliance_input" />
+      </p>
+      <p>
+        URLs to remove/recrawl:
+      </p>
+      <textarea name="urls" cols="100" rows="25" id="urls_textarea">
+      </textarea>
+      <p>
+        <input type="button" value="Remove them" onclick="removeURLs();" />
+        <input type="button" value="Re-crawl them!" onclick="recrawlURLs();" />
+      </p>
+    </form>
+    <form enctype="multipart/form-data" method="post"
+        name="feed" id="feed_form"
+        action="http://127.0.0.1:19900/xmlfeed">
+      <input type="hidden" name="datasource" id="feed_datasource" />
+      <input type="hidden" name="feedtype" id="feed_type" />
+      <textarea name="data" cols="100" rows="1" id="feed_textarea"></textarea>
+    </form>
+  <p><a href="http://gsa-admin-toolkit.googlecode.com/svn/trunk/remove-or-recrawl-urls.html">remove-or-recrawl-urls.html</a>
+	Copyright &copy; 2009 Google Inc. All Rights Reserved.</p>
+	</div>
+  </body>
+</html>
