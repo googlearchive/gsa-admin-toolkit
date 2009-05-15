@@ -22,9 +22,9 @@
 #
 # Usage:
 #   Run every minute from cron. For example:
-#     * * * * * /root/monitor.sh search.google.com google >> /tmp/monitor.out
-#   The first argument is the hostname of the appliance.
-#   The second argument is a word that appears in a lot of documents,
+#     * * * * * /root/monitor.sh -h search.google.com -q google >> /tmp/monitor.out
+#   The argument following -q is the hostname of the appliance.
+#   The argument following -h  is a word that appears in a lot of documents,
 #   such as your domain name.
 #
 # Sample output:
