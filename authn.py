@@ -172,15 +172,18 @@ class AuthN(object):
     base64string = base64.encodestring('%s:%s' % (login, self.user_db[login]))[:-1]
     req = urllib2.Request(resource)
     req.add_header("Authorization", "Basic %s" % base64string)
+    decision = "Indeterminate"
     try:
       urllib2.urlopen(req)
       decision = "Permit"
-    except:
+    except urllib2.URLError:
       type, value, tb = sys.exc_info()
-      # l = traceback.format_tb(tb, None)
-      # print "%-20s%s: %s" % (string.join(l[:], ""), type, value)
       print "Exception: %s %s" % (type, value)
-      decision = "Deny"
+      # example type: urllib2.HTTPError
+      # example value: HTTP Error 404: Not Found
+      error_code = str(value)
+      if error_code.find("401") >= 0 or error_code.find("403") >= 0:
+        decision = "Deny"
     response = ("<soapenv:Envelope "
                 "xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">"
                 "<soapenv:Body><samlp:Response "
