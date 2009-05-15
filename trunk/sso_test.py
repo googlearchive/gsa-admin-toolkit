@@ -110,8 +110,8 @@ class SsoUnitTest(unittest.TestCase):
   def setSearchHost(self, value):
     url = "%s/set_search_host?value=%s" % (SsoUnitTest.url_prefix, value)
     f = urllib2.urlopen(url)
-    val = f.read()
-    self.assertEqual(val, value)
+    self.cookie_domain = f.read()
+    self.assertEqual(self.cookie_domain, value)
 
   def getPublic(self):
     """Method for getting a public URL."""

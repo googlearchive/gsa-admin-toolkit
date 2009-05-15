@@ -62,6 +62,7 @@ __author__ = 'jlowry@google.com (John Lowry)'
 import cherrypy
 import urllib
 import sys
+import time
 import getopt
 
 FORM_COOKIE = "ObFormLoginCookie"
@@ -71,37 +72,24 @@ SEARCH_HOST = ""
 
 class Sso(object):
 
-  def __init__(self, argv):
-    self.test_cookie_path = False
-    self.protocol = "http"
-    self.test_bug_950572 = False
-    self.test_meta_refresh = False
+  def __init__(self, test_cookie_path, protocol, test_bug_950572, test_meta_refresh, delay):
+    self.test_cookie_path = test_cookie_path
+    self.protocol = protocol
+    self.test_bug_950572 = test_bug_950572
+    self.test_meta_refresh = test_meta_refresh
+    self.delay = delay
     self.cookie_domain = SSO_COOKIE_DOMAIN
     self.search_host = SEARCH_HOST
-    try:
-      opts, args = getopt.getopt(argv[1:], None, ["test_cookie_path", "use_ssl",
-                                                  "test_bug_950572", "test_meta_refresh"])
-    except getopt.GetoptError:
-      print "Invalid arguments"
-      sys.exit(1)
-    for opt, arg in opts:
-      if opt == "--test_cookie_path":
-        self.test_cookie_path = True
-      if opt == "--use_ssl":
-        cherrypy.config.update({'global': {
-            'server.ssl_certificate': 'ssl.crt',
-            'server.ssl_private_key': 'ssl.key', }})
-        self.protocol = "https"
-      if opt == "--test_bug_950572":
-        self.test_bug_950572 = True
-      if opt == "--test_meta_refresh":
-        self.test_meta_refresh = True
 
   def index(self):
+    secure_links = "Additional secure links: "
+    for i in range(1000):
+      secure_links += "<a href=\"secure?param=%s\">.</a>" % (i)
     return ("<a href=\"public\">public</a><br>"
             "<a href=\"secure\">secure</a><br>"
             "<a href=\"authorized\">authorized</a><br>"
-            "<a href=\"logout\">logout</a>")
+            "<a href=\"logout\">logout</a><br>"
+            "%s" % (secure_links))
 
   def form(self, path="/"):
     if self.test_cookie_path and cherrypy.request.cookie.has_key(FORM_COOKIE):
@@ -183,17 +171,20 @@ class Sso(object):
   def public(self):
     return "Anyone can view this page. No authentication is required"
 
-  def secure(self, redirected=None):
+  def secure(self, redirected=None, param=None):
     login = self.authenticate("secure")
     refresh = ""
     if self.test_meta_refresh:
       this_url = "%s://%s/secure?redirected=1" % (self.protocol, self.get_host())
       if not redirected:
         refresh = """<meta http-equiv="Refresh" content ="0;URL=%s">""" % this_url
+    if self.delay:
+      time.sleep(self.delay)
     return ("<html><head>%s</head><body>"
             "You must be authenticated to view this page."
-            "You are authenticated as &quot;%s&quot;."
-            "</body></html>") % (refresh, login)
+            "You are authenticated as &quot;%s&quot;. "
+            "The value of param is '%s'."
+            "</body></html>") % (refresh, login, param)
 
   def authorized(self):
     login = self.authenticate("authorized")
@@ -247,4 +238,33 @@ def main(argv):
   pass
 
 if __name__ == '__main__':
-  cherrypy.quickstart(Sso(sys.argv))
+  test_cookie_path = False
+  protocol = "http"
+  test_bug_950572 = False
+  test_meta_refresh = False
+  delay = 0
+  try:
+    opts, args = getopt.getopt(sys.argv[1:], None, ["test_cookie_path", "use_ssl",
+                                                "test_bug_950572", "test_meta_refresh",
+                                                "port=", "delay="])
+  except getopt.GetoptError:
+    print "Invalid arguments"
+    sys.exit(1)
+  for opt, arg in opts:
+    if opt == "--test_cookie_path":
+      test_cookie_path = True
+    if opt == "--use_ssl":
+      cherrypy.config.update({"global": {
+          "server.ssl_certificate": "ssl.crt",
+          "server.ssl_private_key": "ssl.key", }})
+      protocol = "https"
+    if opt == "--test_bug_950572":
+      test_bug_950572 = True
+    if opt == "--test_meta_refresh":
+      test_meta_refresh = True
+    if opt == "--port":
+      port = int(arg)
+      cherrypy.config.update({"global": { "server.socket_port": port }})
+    if opt == "--delay":
+      delay = int(arg)
+  cherrypy.quickstart(Sso(test_cookie_path, protocol, test_bug_950572, test_meta_refresh, delay))
