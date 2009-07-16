@@ -131,8 +131,8 @@ USAGE_TEXT = """Usage %s [OPTIONS] [[smb:|unc:]//server/share/path/to/file]
 
   -C,--client: smbclient, smbhelper or full path to binary
      Binary basename must match regex ^(smbclient|smbhelper)(.exe)?$
-     Google Search Appliance 4.6 uses smbclient, 5.0 uses smbhelper from
-     http://google-search-appliance-mirror.googlecode.com/files/
+     Google Search Appliance 4.6 uses smbclient, 5.0 and newer use smbhelper from
+     http://code.google.com/p/google-search-appliance-mirror/downloads/detail?name=smbhelper-1.0.tar.gz
   -W,--workgroup: crawler workgroup
   -U,--username: crawler username
   -P,--password: crawler password (leave blank for prompt)
@@ -405,8 +405,9 @@ class Config(object):
           found = True
           self.client = absclient + ".exe"
       if found is False:
-        print "\nInvalid client parameter, %s not found in PATH\n" % self.client
-        print Usage()
+        print "\nInvalid client parameter, %s not found in your path:\n%s\n" % (self.client, os.environ["PATH"])
+        print "You need to install smbclient from samba.org or smbhelper from"
+        print "http://code.google.com/p/google-search-appliance-mirror/downloads/detail?name=smbhelper-1.0.tar.gz\n"
         sys.exit()
     else:
       print ("\nInvalid client parameter, "
