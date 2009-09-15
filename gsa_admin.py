@@ -26,7 +26,7 @@ Example usage:
 1. Export the config file:
 
 gsa.py -n <host> --port 8000 -u admin -p <pw> -e --sign-password
-hellohello -f ~/tmp/o.xml -v
+hellohello -o ~/tmp/o.xml -v
 
 2. Make a change to the config file and sign:
 
