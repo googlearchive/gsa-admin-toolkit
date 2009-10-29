@@ -103,7 +103,12 @@ import datetime
 SSO_COOKIE_NAME = "SMSESSION"
 SSO_COOKIE_DOMAIN = ".esodomain2k3.com"
 #the final, redirected SSO system login page (Siteminder example below)
-SSO_LOGIN_URL = "http://esotest.esodomain2k3.com:80/siteminderagent/forms/login.fcc?TYPE=33554433&REALMOID=06-000d7583-9bb0-19f6-af1a-00017f00d004&GUID=&SMAUTHREASON=0&METHOD=GET&SMAGENTNAME=-SM-hjpE3OteK3xraxKO+pQ387eUvvdMoEFPO7DYOR1hPjGjtvd3bBfW47p4mvULrxSf&TARGET=-SM-http://esotest.esodomain2k3.com/siteminder2/"
+SSO_LOGIN_URL = ("http://esotest.esodomain2k3.com:80/siteminderagent/forms/login.fcc?"
+                 "TYPE=33554433&REALMOID=06-000d7583-9bb0-19f6-af1a-00017f00d004&"
+                 "GUID=&SMAUTHREASON=0&METHOD=GET&"
+                 "SMAGENTNAME=-SM-hjpE3OteK3xraxKO+pQ387eUvvdMoEFPO7DYOR1hPjGjtvd3bBfW47p4mvULrxSf&"
+                 "TARGET=-SM-http://esotest.esodomain2k3.com/siteminder2/")
+                 
 #the protected page the user will get redirected to automatically after login 
 SSO_PROTECTED_PAGE = "http://esotest.esodomain2k3.com/siteminder2/"
 #the login page the proxy SSO system presents to the user.
@@ -248,7 +253,8 @@ class SSO(object):
                 if (handle.geturl() ==  SSO_PROTECTED_PAGE):
                     debug_msg = ("Landed at target login page %s") % (handle.geturl())
                     self.debug(debug_msg)
-                    return ("<html><title>Login COOKIE Valid</title<body><h3>Login Valid</h3> <br/>%s</body></html>") %(SSO_COOKIE_VALUE)
+                    return ("<html><title>Login COOKIE Valid</title<body><h3>Login Valid</h3> "
+                            "<br/>%s</body></html>") %(SSO_COOKIE_VALUE)
                 else:
                         self.debug ("SSO_COOKIE EXPIRED")
         else:
