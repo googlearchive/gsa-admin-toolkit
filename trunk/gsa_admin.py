@@ -267,6 +267,24 @@ class gsaWebInterface:
     gsac.setXMLContents(content)
     return gsac
 
+  def setAccessControl(self, urlCacheTimeout):
+    # Tested on 5.0.0.G.14
+    self._login()
+    request = urllib2.Request(self.baseURL,
+                              urllib.urlencode({'actionType': 'cache',
+                                                'authnLoginUrl': '',
+                                                'authnArtifactServiceUrl': '',
+                                                'sessionCookieExpiration': '480',
+                                                'authzServiceUrl': '',
+                                                'requestBatchTimeout': '5.0',
+                                                'singleRequestTimeout': '2.5',
+                                                'maxHostload': '10',
+                                                'urlCacheTimeout': urlCacheTimeout,
+                                                'saveSettings': 'Save Settings'}))
+    result = urllib2.urlopen(request)
+    content = result.read()
+
+
 ###############################################################################
 # MAIN
 ###############################################################################
@@ -289,6 +307,9 @@ if __name__ == "__main__":
   parser.add_option("-g", "--sign-password", dest="signpassword",
           help="Sign password for signing/import/export", metavar="FILE")
 
+  parser.add_option("--cache-timeout", dest="cachetimeout",
+          help="Value for Authorization Cache Timeout")
+
   # actionsOptions
   actionOptionsGrp = OptionGroup(parser, "Actions:")
 
@@ -303,6 +324,9 @@ if __name__ == "__main__":
 
   actionOptionsGrp.add_option("-r", "--verify", dest="verify", action="store_true",
            help="Verify signature/HMAC in XML Config")
+
+  actionOptionsGrp.add_option("-a", "--set", dest="setaccesscontrol", action="store_true",
+           help="Set Access Control settings")
 
   parser.add_option_group(actionOptionsGrp)
 
@@ -336,20 +360,27 @@ if __name__ == "__main__":
     logLevel = startingLevel - logOffset
     log.setLevel(logLevel)
 
-  # Verify opts
-  if not options.signpassword:
-    log.error("Signing password not given")
-    sys.exit(3)
+  if not options.setaccesscontrol:
+    # Verify opts
+    if not options.signpassword:
+      log.error("Signing password not given")
+      sys.exit(3)
 
-  if len(options.signpassword) < 8:
-    log.error("Signing password must be 8 characters or longer")
-    sys.exit(3)
+    if len(options.signpassword) < 8:
+      log.error("Signing password must be 8 characters or longer")
+      sys.exit(3)
 
   action = None
 
   # Ensure only one action is specified
   if options.actimport:
     action = "import"
+  if options.setaccesscontrol:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "setaccesscontrol"
   if options.export:
     if action:
       log.error("Specify only one action")
@@ -432,3 +463,18 @@ if __name__ == "__main__":
     else:
       log.warn("XML Signature/HMAC does NOT matches supplied password" )
       sys.exit(1)
+
+  elif action == "setaccesscontrol":
+    log.info("Setting access control")
+    if not options.cachetimeout:
+      log.error("No value for Authorization Cache Timeout")
+      sys.exit(3)
+    try:
+      cachetimeout = int(options.cachetimeout)
+      log.info("Value of cache timeout: %d" % (cachetimeout))
+    except ValueError:
+      log.error("Cache timeout is not an integer: %s" % (cachetimeout))
+      sys.exit(3)
+
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI.setAccessControl(options.cachetimeout)
