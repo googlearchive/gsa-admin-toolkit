@@ -180,7 +180,6 @@ Also see:
 code.google.com/apis/searchappliance/documentation/60/authn_authz_spi.html
 """
 
-__author__ = 'jlowry@google.com (John Lowry)'
 
 import base64
 import datetime
