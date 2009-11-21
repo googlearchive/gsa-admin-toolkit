@@ -49,7 +49,10 @@ usage:
                       referer:  Use the HTTP referer HTTP header the browser
                       sends after a redirect by the GSA.  Recommended to use
                       this setting with GSA 6.x.  Referer redirects to the
-                      http: port of the GSA
+                      http: port of the GSA.  If https is required,
+                      modify in def login() the following line from http to
+                      to https:
+                      location = ('http://%s/SamlArtifactConsumer?...
 
                       static: hardcoded return path (defined in def login())
                       set the static_redirect= 
@@ -433,6 +436,8 @@ class AuthN(object):
       hostname = parsed_URL.hostname
       cherrypy.response.status = 302
       # redirect back to the GSA and add on the artifact,relaystate
+      # redirect always to http://gsa.yourdomain.com/SamlArtifactConsumer
+      # if https is required, modify the line below to https
       location = ('http://%s/SamlArtifactConsumer?SAMLart=%s&RelayState=%s'
                   % (hostname, rand_art, urllib.quote(RelayState)))
       cherrypy.response.headers['location'] = location
