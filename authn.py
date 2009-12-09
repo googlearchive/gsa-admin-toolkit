@@ -88,12 +88,16 @@ SETUP and RUN configuration.
       pages is:
 
       self.user_db = {'user1':'somepassword', 'user2':'otherpassword',
-                        'gsa1':'gsapassword'}
+                      'gsa1':'gsapassword'}
+                        
       self.authz_db = {
        '/secure?page=secure1':'user1,user2,gsa1',
        '/secure?page=secure2':'user1,gsa1',
        '/secure?page=secure3':'user2,gsa1',
        '/secure?page=secure4':'user1,user2,gsa1'}
+       
+       Which means user1,user2, user3 is allowed '/secure?page=secure1' and
+       user1,gsa1 is allowd to view '/secure?page=secure2' and so on.
 
       This setting and internal authz_db is enabled by default so the user
       does not have to edit/modify the script
@@ -116,8 +120,7 @@ SETUP and RUN configuration.
                             http://spi.yourdomain.com:28080/artifact_service
                           Authorization service URL:
                             http://spi.yourdomain.com:28080/authz
-           check Disable prompt for Basic authentication or NTLM authentication)
-           do NOT check Use batched SAML Authz Requests.)                        
+           check Disable prompt for Basic authentication or NTLM authentication)                       
    
    B) If this script is used against an actual content server
    eg:  running on secure.yourdomain.com, then the configuration on the GSA
