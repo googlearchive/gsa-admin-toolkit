@@ -734,9 +734,11 @@ if __name__ == '__main__':
            '--port=<port> --consumer_mech=(saml|referer|static) '
            '--saml_issuer=<issuer>')
     sys.exit(1)
+  cherrypy.config.update({'global':{'log.screen': False}})   
   for opt, arg in opts:
     if opt == "--debug":
       debug_flag = True
+      cherrypy.config.update({'global':{'log.screen': True}})                  
     if opt == "--use_fqdn_hosts":
       use_fqdn_hosts = True
     if opt == "--consumer_mech":
@@ -756,11 +758,6 @@ if __name__ == '__main__':
     if opt == "--port":
       port = int(arg)
       cherrypy.config.update({"global": {"server.socket_port": port}})
-
-    if debug_flag == True:
-      cherrypy.config.update({'log.screen': True})
-    else:
-      cherrypy.config.update({'log.screen': False})
       
 cherrypy.quickstart(AuthN(protocol, debug_flag, use_fqdn_hosts, consumer_mech,
                           saml_issuer))
