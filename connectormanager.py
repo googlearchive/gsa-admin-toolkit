@@ -34,6 +34,17 @@ sample xml sitemap:  http://www.domain.com/sitemap.xml
 
 This script can be used as a template to write arbitrary simple connectors.
 
+The connectormanger does not manage an individual connectors checkpointing or
+traversal rates- its entirely upto the connector implementation to handle
+how often and how to manage the traversal state.
+
+Configured connector instances are stored in config.xml (created on initial
+startup) and includes the entire base64 encoded XML configuration form for
+that connector.
+
+NOTE:  The protocol between the GSA and connectormanager is subject to change 
+       but is verified to work on GSA 6.2
+
 usage:
   ./connectormanager.py
     --debug           Show debug logs
@@ -119,6 +130,11 @@ class structure
       #finally feed in the data with the GSA's IP address and feed name was 
       #sent in with the  __init__ constructor of the connector
       feeder.post_multipart(gsa, name)
+      
+    When a connector is added or modified from the GSAs admin console, the
+    connectormanager will call stopConnector() then startConnector().  The
+    specific connector implementation must make sure to properly stop/start
+    traversal on the content system.
 
   --postfeed:
        Code taken from our push_feeder.py class
@@ -387,7 +403,7 @@ class connectormanager(object):
             '</CmResponse>')  %(c.getForm())
   getConnectorConfigToEdit.exposed = True
 
-  #not implemented yet but
+  #not implemented yet but 
   def restartConnectorTraversal(self, ConnectorName=None, Lang=None):
     self.log(('restartConnectorTraversal '))
     c = self.getconnector(ConnectorName)
@@ -445,10 +461,13 @@ class connectormanager(object):
       in_file.close()
       xmldoc = xml.dom.minidom.parseString(text)
       m_node = xmldoc.getElementsByTagName('gsa')
-      for rnode in m_node:
-        cgsa = rnode.childNodes[0].nodeValue
-      if (self.gsa == ''):
-        self.gsa = cgsa
+      try:
+        for rnode in m_node:
+          cgsa = rnode.childNodes[0].nodeValue
+        if (self.gsa == ''):
+          self.gsa = cgsa          
+      except IndexError:
+        self.log('GSA Address not found in config file..waiting for testConnectivity()')
       m_node = xmldoc.getElementsByTagName('connector')
       for rnode in m_node:
         rchild = rnode.childNodes
@@ -731,7 +750,7 @@ class iconnector:
     raise NotImplementedError("startConnector() not implemented")
 
   def stopConnector(self):
-    raise NotImplementedError("CstopConnector() not implemented") 
+    raise NotImplementedError("stopConnector() not implemented") 
 
   def restartConnectorTraversal(self):
     raise NotImplementedError("restartConnectorTraversal() not implemented")
@@ -741,6 +760,20 @@ class iconnector:
 
   def authorize(self, identity, domain, resource):
     raise NotImplementedError("authorize() not implemented")
+
+  def getConfigParam(self, param_name):
+    xmldoc = xml.dom.minidom.parseString(self.getConfig())
+    m_node = xmldoc.getElementsByTagName('ConnectorConfig')
+    for rnode in m_node:
+      rchild = rnode.childNodes
+      for nodes in rchild:
+        if nodes.nodeName == 'ConnectorName':
+          ConnectorName = nodes.childNodes[0].nodeValue 
+        if nodes.nodeName == 'Param':
+          nodename =  nodes.attributes["name"].value 
+          if (nodename == param_name):
+            return nodes.attributes["value"].value
+    return None      
 
 class connectorimpl(iconnector): 
 #class which implements the actual connector 
@@ -759,8 +792,8 @@ class connectorimpl(iconnector):
                  '</tr><tr><td>Sitemap URL:</td><td> '
                  '<input type="surl" size="65" name="surl"/>'
                  '</td></tr>'
-                 '<tr><td>Check Interval:</td>'
-                 '<td><input type="interval" size="10" name="interval"/></td>'
+                 '<tr><td>Fetch Delay:</td>'
+                 '<td><input type="delay" size="10" name="delay"/></td>'
                  '</tr>]]>'
                  '</FormSnippet>'
                  '</ConfigureResponse>'
@@ -805,48 +838,21 @@ class connectorimpl(iconnector):
     self.gsa = gsa
     self.time_interval = '0-0'
     self.debug_flag = debug_flag
-    interval = ''
     #self.config contains the raw XML config info for this connector
-    #the GSA sends to the connectormanager.  <ConnectorConfig/>
-    xmldoc = xml.dom.minidom.parseString(self.config)
-    m_node = xmldoc.getElementsByTagName('ConnectorConfig')
-    for rnode in m_node:
-      rchild = rnode.childNodes
-      for nodes in rchild:
-        if nodes.nodeName == 'ConnectorName':
-          ConnectorName = nodes.childNodes[0].nodeValue 
-        if nodes.nodeName == 'Param':
-          nodename =  nodes.attributes["name"].value 
-          if (nodename == 'interval'):
-            interval = nodes.attributes["value"].value
-            self.interval = interval
+    #the GSA sends to the connectormanager.  <ConnectorConfig/>    
+    self.delay = self.getConfigParam('delay')    
 
   def log(self, deb_string):
     if self.debug_flag:
       now = datetime.datetime.now()
       print  ("%s  %s") % (now, deb_string)
 
-  def run(name, config, load, gsa, debug_flag):
+  def run(name, config, u, delay, load, gsa, debug_flag):
   #class called by the threading.Timer class
   #the arguments have to get passed into it.. i don't know how to use 
   #global class instead...
   # the parameters into the 'run' method
     print('%s -----> TIMER INVOKED for %s ' %(datetime.datetime.now(), name))
-    #first extract the config parameters, and traverse the content server
-    xmldoc = xml.dom.minidom.parseString(config)
-    m_node = xmldoc.getElementsByTagName('ConnectorConfig')
-    u = ''
-    for rnode in m_node:
-      rchild = rnode.childNodes
-      for nodes in rchild:
-        if nodes.nodeName == 'ConnectorName':
-          ConnectorName = nodes.childNodes[0].nodeValue 
-        if nodes.nodeName == 'Param':
-          nodename =  nodes.attributes["name"].value
-          if nodename == 'surl':
-            u = nodes.attributes["value"].value 
-          if nodename == 'interval':
-            interval = nodes.attributes["value"].value
     # now go get the sitemap.xml file itself
     req = Request(u)
     response = urlopen(req)
@@ -868,8 +874,8 @@ class connectorimpl(iconnector):
     #for each url in the sitemap, send them in batches to the GSA
     #the batch size is specified by the 'load' parameter from the config page 
     i = 0
-    #feed_type = 'metadata-and-url'
-    feed_type = 'incremental'
+    feed_type = 'metadata-and-url'
+    #feed_type = 'incremental'
     feeder = postfeed(feed_type, debug_flag)
     for url in sitemap_urls:
       strrecord = ''
@@ -919,15 +925,17 @@ class connectorimpl(iconnector):
       feeder.post_multipart(gsa, name)
     #restart the thread again ...the threading.Timer only runs once
     #so we reset again
-    #t = threading.Timer(int(float(interval)),
-    #   run, [name,config,load,gsa,debug_flag])
+    #t = threading.Timer(int(float(delay)),
+    #   run, [name,config,delay,load,gsa,debug_flag])
     #t.start()
   def startConnector(self):
     #the sitemapconnector is cron trigger based in that it runs after a certain
     #delay and stops.  You can implement any traversal scheme/scheduling here
     #that you want to.
-    self.log(('Starting Thread for %s with interval %s  GSA %s') %(self.name, self.interval, self.gsa))
-    t = threading.Timer(int(float(self.interval)), run, [self.name, self.config, self.load, self.gsa, self.debug_flag])
+    u = self.getConfigParam('surl')
+    self.delay = self.getConfigParam('delay')
+    self.log(('Starting Thread for %s with delay %s  GSA %s') %(self.name, self.delay, self.gsa))    
+    t = threading.Timer(int(float(self.delay)), run, [self.name, self.config, u, self.delay, self.load, self.gsa, self.debug_flag])
     t.start()
 
   def stopConnector(self): 
@@ -952,29 +960,16 @@ class connectorimpl(iconnector):
   def getForm(self):
     xmldoc = xml.dom.minidom.parseString(self.config)
     m_node = xmldoc.getElementsByTagName('ConnectorConfig')
-    surl = ''
-    interval = ''
-    for rnode in m_node:
-      rchild = rnode.childNodes
-      for nodes in rchild:
-        if nodes.nodeName == 'ConnectorName':
-          ConnectorName = nodes.childNodes[0].nodeValue
-        if nodes.nodeName == 'Param':
-          #nodes.toxml()
-          nodename =  nodes.attributes["name"].value
-          if (nodename == 'surl'):
-            surl = nodes.attributes["value"].value
-          if (nodename == 'interval'):
-            interval = nodes.attributes["value"].value
-
+    surl = self.getConfigParam('surl')
+    delay = self.getConfigParam('delay')
     str_out=('<![CDATA[<tr><td>Sitemap Connector Form</td>'
              '</tr><tr><td>Sitemap URL:</td><td> '
              '<input type="surl" size="65" name="surl" value="%s"/>'
              '</td></tr>'
-             '<tr><td>Check Interval:</td>'
+             '<tr><td>Fetch Delay:</td>'
              '<td>'
-             '<input type="interval" size="10" name="interval" value="%s"/>'
-             '</td></tr>]]>') %(surl, interval)
+             '<input type="delay" size="10" name="delay" value="%s"/>'
+             '</td></tr>]]>') %(surl, delay)
     return str_out
 
 def main(argv):
