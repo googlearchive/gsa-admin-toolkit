@@ -142,8 +142,6 @@ class structure
        Which sends the feed to the GSA
 
 http://www.cherrypy.org/
-Also see:
-code.google.com/apis/searchappliance/documentation/60/authn_authz_spi.html
 """
 
 __author__ = "salrashid123@gmail.com for Google on 2010.1.21"
@@ -279,11 +277,11 @@ class connectormanager(object):
       for nodes in rchild:
         if nodes.nodeName == 'ConnectorName':
           ConnectorName = nodes.childNodes[0].nodeValue
-
     #first check to see if a connector with this name exists
     c = self.getconnector(ConnectorName)
     #if not create a connector instance, add it to the list 
     if c is not None:
+      c.stopConnector()
       self.removeConnector(ConnectorName)
     #create the connector given the string form of the connectorname
     #first get the string name of the connector
