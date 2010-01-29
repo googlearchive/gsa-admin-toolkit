@@ -441,7 +441,7 @@ class AuthN(object):
       # redirect back to the GSA and add on the artifact,relaystate
       # redirect always to http://gsa.yourdomain.com/SamlArtifactConsumer
       # if https is required, modify the line below to https
-      location = ('http://%s/SamlArtifactConsumer?SAMLart=%s&RelayState=%s'
+      location = ('https://%s/SamlArtifactConsumer?SAMLart=%s&RelayState=%s'
                   % (hostname, rand_art, urllib.quote(RelayState)))
       cherrypy.response.headers['location'] = location
       if self.debug_flag:
