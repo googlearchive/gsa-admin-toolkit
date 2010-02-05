@@ -1,108 +1,247 @@
-#!/usr/bin/python
-#
-# Copyright (C) 2009 Google Inc.
+#!/usr/bin/python2.4
+# 
+# Copyright 2010 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
+# 
+#    http://www.apache.org/licenses/LICENSE-2.0
+# 
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# urlstats.py
-#
-# By Jason Liu for Google on 2009.09.30
-#
-# urlstats.py analyzes the file exported from the "Status and Reports > 
-# Export All URLs" page on a Google Search Appliance (version 6.0).  The
-# exported URL file contains the following fields:
-#
-# url	
-# crawl_frequency
-# state
-# currently_inflight
-# error_count
-# contentfeed_datasource_fingerprint
-# in_index
-# locked
-# crawled_securely
-# last_crawled
-# content_type
-# contentsize_in_bytes
-# content_checksum
-# fetchtime_in_ms
 
-import sys    # Used for processing command line arguments
+"""urlstats.py analyzes a data file and generates a set of reports.
+
+The file should be exported from the "Status and Reports > Export All URLs"
+page on a Google Search Appliance (version 6.0 & 6.2).  The exported URL file
+contains the following fields separated by tab:
+
+url
+crawl_frequency
+state
+currently_inflight
+error_count
+contentfeed_datasource_fingerprint
+in_index
+locked
+crawled_securely
+last_crawled
+content_type
+contentsize_in_bytes
+content_checksum
+fetchtime_in_ms
+"""
+
+import getopt
+import sys
+
+# command line options
+OPTIONS = 'h:'
+LONG_OPTIONS = ['help',
+                'listurlslargerthan=',
+                'all',
+                'state',
+                'size',
+                'debug']
+# add a key value pair for each type of report
+REPORT_CFG = {'reportAll': True,
+              'reportState': False,
+              'reportSize': False,
+              'listurlslargerthan': -1
+             }
+DEBUG_MODE = False
+
 
 def main():
+  global DEBUG_MODE
   try:
-    log_file = sys.argv[1]    # The log file to be analyzed
+    opts, args = getopt.getopt(sys.argv[1:], OPTIONS, LONG_OPTIONS)
+  except getopt.GetoptError, err:
+    # print help information and exit:
+    print str(err)
+    Usage()
+    sys.exit(2)
+
+  for o, a in opts:
+    if o == '--listurlslargerthan':
+      REPORT_CFG['reportAll'] = False
+      REPORT_CFG['listurlslargerthan'] = int(a)  # output the large files
+    elif o == '--state':
+      REPORT_CFG['reportAll'] = False
+      REPORT_CFG['reportState'] = True  # generate a report based on URL state
+    elif o == '--size':
+      REPORT_CFG['reportAll'] = False
+      REPORT_CFG['reportSize'] = True  # generate a report based on URL size
+    elif o == '--debug':
+      DEBUG_MODE = True
+    elif o in ('-h', '--help'):
+      Usage()
+      sys.exit()
+    else:
+      assert False, 'unhandled option'
+      sys.exit()
+
+  try:
+    log_file = args[0]  # The log file to be analyzed
   except IndexError:
-    usage()
-    exit()
+    log_file = 'all_urls'
 
-  reportOnState(log_file)
+  GenReport(log_file)
 
-def reportOnState(file):
-  """
-  Go through each line of the log file and count the number
-of URLs in each state.
-  The url file can be large (>1GB), so we don't want to read
-the entire file into memory. We do more I/O and keep memory 
-footprint small.
-  """
-  totalUrl = 0
+
+def GenReport(log_file):
+  """Read each line of the log file and generate reports."""
+  total_url = 0
   states = dict()
-  f = open(file, 'r') 
+  # The content sizes in KB that we want to report on
+  # The for loop below assumes that this list is in ascending order
+  sizes_kb = [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2*1024, 4*1024, 32*1024]
+  # initialize the content size map.  it is a dictionary with
+  # key: content size threshold (up to) # value: number of documents
+  content_size_map = dict([(x*1024, 0) for x in sizes_kb])
+  # files that are larger than all the value in sizes_kb are considered
+  # very large
+  very_large_files = 0
+
+  try:
+    f = open(log_file, 'r')
+  except IOError:
+    print 'unable to open file %s' % file
+    Usage()
+    sys.exit()
+
+  # The url file can be large (>1GB), so we don't want to read
+  # the entire file into memory. We do more I/O and keep memory
+  # footprint small.
   for line in f:
+    # collect url state information
     try:
-      state = line.split()[2]
-      totalUrl += 1
+      state = line.split('\t')[2]
+    except IndexError, e:
+      print 'IndexError:', e
+    else:
+      total_url += 1
       if state in states:
         states[state] += 1
       else:
         states.update({state: 1})
-    except:
-      pass
+
+    # collect content size in byte
+    try:
+      size = int(line.split('\t')[11])
+    except ValueError, e:
+      # We encountered some value that can not be converted to a number.
+      # Most likely it is the header line, but could be something else.
+      # We will just skip it unless we are in debug mode.
+      MyDebug('Unable to convert the string to a number.  ValueError:')
+      MyDebug(e)
+    else:
+      for size_kb in sizes_kb:
+        if size < size_kb*1024:
+          content_size_map[size_kb*1024] += 1
+          break
+      else:
+        # The for loop fell through, the content size is
+        # greater than all the size thresholds in the list
+        # The file is considered very large
+        very_large_files += 1
+      if (REPORT_CFG['listurlslargerthan'] != -1 and
+          size > REPORT_CFG['listurlslargerthan']):
+        print '%16s\t%s' % (line.split('\t')[11], line.split('\t')[0])
+        
+    # TODO (Jason): collect extension info
+    # TODO (Jason): collect content_type info
+    # TODO (Jason): collect URL length info, such as longer than a threshold
+    #               or way longer than average, and print the extra long urls
   f.close()
 
   # remove the header
-  del states['state'] 
-  totalUrl -= 1
-    
+  del states['state']
+  total_url -= 1
+
   # build a list, reversely sorted by number of URLs
   states_sorted = states.items()
-  states_sorted.sort(key=lambda x:(x[1], x[0]), reverse=True)
+  states_sorted.sort(key=lambda x: (x[1], x[0]), reverse=True)
+
+  # build a list, reversely sorted by content size threshold
+  content_size_map_sorted = content_size_map.items()
+  content_size_map_sorted.sort(key=lambda x: (x[0], x[1]), reverse=True)
 
   # print report
-  printSeparatorLine()
-  myPrint2("Total URLs the GSA discovered", totalUrl)
-  printSeparatorLine()
-  myPrint2("    URL STATE", "NUMBER OF URLS")
-  myPrint2 ("--------------------------", "--------------")
-  for (state, count) in states_sorted:
-    myPrint2(state, count)
-# END of reportOnState
+  if (REPORT_CFG['reportState'] or
+      REPORT_CFG['reportSize'] or
+      REPORT_CFG['reportAll']):
+    PrintSeparatorLine()
+    PrintTwoCol('Total URLs the GSA discovered', total_url)
+    PrintSeparatorLine()
 
-def printSeparatorLine():
-  print "*********************************************"
+  # generate a summary of URL state
+  if REPORT_CFG['reportState'] or REPORT_CFG['reportAll']:
+    PrintTwoCol('  URL STATE', 'NUMBER OF URLS')
+    PrintTwoCol ('--------------------------', '--------------')
+    for (state, count) in states_sorted:
+      PrintTwoCol(state, count)
+    PrintSeparatorLine()
 
-def myPrint2(field, value):
-  print "%-30s %10s" % (field, value)
+  # generate a summary of URL size
+  if REPORT_CFG['reportSize'] or REPORT_CFG['reportAll']:
+    PrintTwoCol('CONTENT SIZE (UP TO)', 'NUMBER OF URLS')
+    PrintTwoCol ('--------------------------', '--------------')
+    PrintTwoCol('larger than 32MB', very_large_files)
+    for (size, count) in content_size_map_sorted:
+      PrintTwoCol(str(size).rjust(16), count)
+      
+  # TODO (Jason): generate a summary of various extensions
+  # TODO (Jaosn): generate a summary of content_type
+# END of GenReport
 
-def usage():
+
+def MyDebug(s):
+  if DEBUG_MODE:
+    print s
+
+
+def PrintSeparatorLine():
+  print '*********************************************'
+
+
+def PrintTwoCol(field, value):
+  print '%-30s\t%10s' % (field, value)
+
+
+def Usage():
+  """Print the help message."""
   print """
-USAGE: urlstats.py FILE
+Usage: urlstats.py [--state|size|listurlslargerthan|debug][FILE]
 
-Generate a report from FILE, which is the file exported from the
+  Generate a report from FILE, which is the file exported from the
 "Status and Reports > Export All URLs" page in the Admin Console
 on a Google Search Appliance.
+
+Examples:
+
+1. To read the input file named all_urls from working directory and generate
+   all the reports, but not list the large URLs.
+
+   urlstats.py
+
+2. To do the same things as example one but read from a different file
+
+   urlstats.py my_url_file.txt
+
+3. To list URLs larger than 1000 bytes
+
+   urlstats.py --listurlslargerthan=1000
+
+4. Only print a report about URL state
+
+   urlstats.py --state
   """
 
-if __name__ == '__main__':    # If we're being launched as a standalone app...
-    main()
+
+if __name__ == '__main__':  # If we're being launched as a standalone app...
+  main()
