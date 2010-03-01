@@ -58,12 +58,18 @@ import cookielib
 import re
 from optparse import OptionParser, OptionGroup
 
+# Required for utf-8 file compatibility
 reload(sys)
 sys.setdefaultencoding("utf-8")
 del sys.setdefaultencoding
 
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
 DEFAULTLOGLEVEL=logging.INFO
 log = logging.getLogger(__name__)
+log.addHandler(NullHandler())
 
 class gsaConfig:
   "Google Search Appliance XML configuration tool"
@@ -72,7 +78,7 @@ class gsaConfig:
 
   def __init__(self, fileName=None):
     if fileName:
-      self.configXMLString = open(fileName).read()
+      self.openFile(fileName)
 
   def __str__(self):
     return self.configXMLString
@@ -88,12 +94,12 @@ class gsaConfig:
 
   def setXMLContents(self, xmlString):
     "Sets the runtime XML contents"
-    self.configXMLString = xmlString
+    self.configXMLString = xmlString.encode("utf-8")
     #log.warning("Signature maybe invalid. Please verify before uploading or saving")
 
   def getXMLContents(self):
     "Returns the contents of the XML file"
-    return self.configXMLString
+    return self.configXMLString.encode("utf-8")
 
   def sign(self, password):
     doc = xml.dom.minidom.parseString(self.configXMLString)
@@ -121,7 +127,7 @@ class gsaConfig:
     doc.writexml(outputXMLFile)
 
   def verifySignature(self, password):
-    doc = xml.dom.minidom.parseString(self.configXMLString)
+    doc = xml.dom.minidom.parseString(self.getXMLContents())
     # Get <config> node
     configNode = doc.getElementsByTagName("config").item(0)
     # get string of Node and children (as utf-8)
@@ -135,6 +141,7 @@ class gsaConfig:
     signatureValue = signatureNode.firstChild.nodeValue
     # signatureValue may contain whitespace and linefeeds so we'll just ensure that
     # our HMAC is found within
+     
     if signatureValue.count(myhmac.hexdigest()) :
       log.debug("Signature matches")
       return 1
@@ -151,15 +158,22 @@ class gsaWebInterface:
   password = None
   hostName = None
   loggedIn = None
+  _url_opener = None
 
   def __init__(self, hostName, username, password, port=8000):
     self.baseURL = 'http://%s:%s/EnterpriseController' % (hostName, port)
     self.hostName = hostName
     self.username = username
     self.password = password
-    self.cookieJar = cookielib.CookieJar()
-    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
-    urllib2.install_opener(opener)
+    # build cookie jar for this web instance only. Should allow for GSAs port mapped behind a reverse proxy.
+    cookieJar = cookielib.CookieJar()
+    self._url_opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
+    
+  def _openurl(self, request):
+      """
+      request: urllib2 request object or URL string
+      """
+      return self._url_opener.open(request)
 
   def _encode_multipart_formdata(self, fields, files):
     """
@@ -190,8 +204,7 @@ class gsaWebInterface:
   def _login(self):
     if not self.loggedIn:
       log.debug("Fetching initial page for new cookie")
-      request = urllib2.Request(self.baseURL)
-      result = urllib2.urlopen(request)
+      self._openurl(self.baseURL)
       request = urllib2.Request(self.baseURL,
                                 urllib.urlencode(
           {'actionType' : 'authenticateUser',
@@ -199,7 +212,7 @@ class gsaWebInterface:
            'password' : self.password}))
 
       log.debug("Logging in as %s..."  % self.username)
-      result = urllib2.urlopen(request)
+      result = self._openurl(request)
       resultString = result.read()
       home = re.compile("Google Search Appliance\s*&gt;\s*Home")
       if not home.search(resultString):
@@ -210,8 +223,8 @@ class gsaWebInterface:
       self.loggedIn = True
 
   def _logout(self):
-    request = urllib2.Request(self.baseURL,urllib.urlencode({'actionType' : 'logout'}))
-    res = urllib2.urlopen(request)
+    request = urllib2.Request(self.baseURL, urllib.urlencode({'actionType' : 'logout'}))
+    self._openurl(request)
     self.loggedIn = False
 
   def __del__(self):
@@ -228,7 +241,7 @@ class gsaWebInterface:
     self._login()
     request = urllib2.Request(self.baseURL, body, headers)
     log.info("Sending XML...")
-    result = urllib2.urlopen(request)
+    result = self._openurl(request)
     content = result.read()
     if content.count("Invalid file"):
       log.error("Invalid configuration file")
@@ -257,7 +270,7 @@ class gsaWebInterface:
                                                 'password2': configPassword}))
 
     log.debug("Fetching config XML")
-    result = urllib2.urlopen(request)
+    result = self._openurl(request)
     content = result.read()
     if content.count("Passphrase should be at least 8 characters long"):
       log.error("Passphrase should be at least 8 characters long. You entered: '%s'" % (configPassword))
@@ -281,8 +294,9 @@ class gsaWebInterface:
                                                 'maxHostload': '10',
                                                 'urlCacheTimeout': urlCacheTimeout,
                                                 'saveSettings': 'Save Settings'}))
-    result = urllib2.urlopen(request)
-    content = result.read()
+    result = self._openurl(request)
+    # Content never returned
+    #content = result.read()
 
 
 ###############################################################################
@@ -305,7 +319,7 @@ if __name__ == "__main__":
           help="Output file name", metavar="FILE")
 
   parser.add_option("-g", "--sign-password", dest="signpassword",
-          help="Sign password for signing/import/export", metavar="FILE")
+          help="Sign password for signing/import/export")
 
   parser.add_option("--cache-timeout", dest="cachetimeout",
           help="Value for Authorization Cache Timeout")
