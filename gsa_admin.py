@@ -141,7 +141,7 @@ class gsaConfig:
     signatureValue = signatureNode.firstChild.nodeValue
     # signatureValue may contain whitespace and linefeeds so we'll just ensure that
     # our HMAC is found within
-     
+
     if signatureValue.count(myhmac.hexdigest()) :
       log.debug("Signature matches")
       return 1
@@ -168,19 +168,18 @@ class gsaWebInterface:
     # build cookie jar for this web instance only. Should allow for GSAs port mapped behind a reverse proxy.
     cookieJar = cookielib.CookieJar()
     self._url_opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
-    
+
   def _openurl(self, request):
-      """
-      request: urllib2 request object or URL string
-      """
-      return self._url_opener.open(request)
+    """Args:
+      request: urllib2 request object or URL string.
+    """
+    return self._url_opener.open(request)
 
   def _encode_multipart_formdata(self, fields, files):
     """
     fields: a sequence of (name, value) elements for regular form fields.
     files: a sequence of (name, filename, value) elements for data to be uploaded as files
     """
-
     BOUNDARY = '----------ThIs_Is_tHe_bouNdaRY_$'
     CRLF = '\r\n'
     lines = []
@@ -280,9 +279,35 @@ class gsaWebInterface:
     gsac.setXMLContents(content)
     return gsac
 
-  def setAccessControl(self, urlCacheTimeout):
-    # Tested on 5.0.0.G.14
+  def getSecurityToken(self, actionType):
+    """Gets the value of the security_token hidden form parameter.
+
+    Args:
+      actionType: a string, used to fetch the Admin Console form.
+
+    Returns:
+      A long string, required as a parameter when submitting the form.
+      Returns an empty string if security_token does not exist.
+    """
     self._login()
+    # request needs to be a GET not POST
+    url = '%s?actionType=%s' % (self.baseURL, actionType)
+    log.debug('Fetching url: %s' % (url))
+    result = self._openurl(url)
+    content = result.read()
+    token_re = re.compile('name="security_token"[^>]*value="([^"]*)"', re.I)
+    match = token_re.search(content)
+    if match:
+      security_token = match.group(1)
+      log.debug('Security token is: %s' % (security_token))
+      return security_token
+    else:
+      return ""
+
+  def setAccessControl(self, urlCacheTimeout):
+    # Tested on 5.0.0.G.14 and 6.2.0.G.14
+    self._login()
+    security_token = self.getSecurityToken('cache')
     request = urllib2.Request(self.baseURL,
                               urllib.urlencode({'actionType': 'cache',
                                                 'authnLoginUrl': '',
@@ -292,11 +317,12 @@ class gsaWebInterface:
                                                 'requestBatchTimeout': '5.0',
                                                 'singleRequestTimeout': '2.5',
                                                 'maxHostload': '10',
+                                                'security_token': security_token,
                                                 'urlCacheTimeout': urlCacheTimeout,
                                                 'saveSettings': 'Save Settings'}))
     result = self._openurl(request)
-    # Content never returned
-    #content = result.read()
+    # Form submit did not work if content contains this string: "Forgot Your Password?"
+    # content = result.read()
 
 
 ###############################################################################
