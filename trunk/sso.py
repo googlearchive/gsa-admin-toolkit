@@ -267,4 +267,6 @@ if __name__ == '__main__':
       cherrypy.config.update({"global": { "server.socket_port": port }})
     if opt == "--delay":
       delay = int(arg)
+  # cherrypy.server.socket_port = 8080
+  # cherrypy.server.socket_host = ""
   cherrypy.quickstart(Sso(test_cookie_path, protocol, test_bug_950572, test_meta_refresh, delay))

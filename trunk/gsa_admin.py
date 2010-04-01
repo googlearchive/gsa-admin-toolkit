@@ -40,6 +40,9 @@ hellohello -f ~/tmp/o2.xml -v
 Note that you must use the same password to sign a file that you used
 when exporting. You will get an error when importing if you do not do
 this.
+
+TODO(jlowry): add in functionality from adminconsole.py: sync DB,
+pause/resume crawl, get crawl status, shutdown.
 """
 
 __author__ = "alastair@mcc-net.co.uk (Alastair McCormack)"
