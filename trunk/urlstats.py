@@ -120,7 +120,7 @@ def GenReport(log_file):
   for line in f:
     # collect url state information
     try:
-      state = line.split('\t')[2]
+      state = line.split('\t')[2].strip()
     except IndexError, e:
       print 'IndexError:', e
     else:
@@ -138,6 +138,13 @@ def GenReport(log_file):
       # Most likely it is the header line, but could be something else.
       # We will just skip it unless we are in debug mode.
       MyDebug('Unable to convert the string to a number.  ValueError:')
+      MyDebug(e)
+    except IndexError, e:
+      # We encountered a line that contains less than 12 fields
+      # We will just skip it unless we are in debug mode.
+      MyDebug('Encountered a bad line:')
+      MyDebug(line)
+      MyDebug('IndexError:')
       MyDebug(e)
     else:
       for size_kb in sizes_kb:
@@ -160,8 +167,12 @@ def GenReport(log_file):
   f.close()
 
   # remove the header
-  del states['state']
-  total_url -= 1
+  try:
+    del states['state']
+  except KeyError, e:
+    MyDebug('Did not find a header line.')
+  else:
+    total_url -= 1          # removed the header, so decrement by one
 
   # build a list, reversely sorted by number of URLs
   states_sorted = states.items()
