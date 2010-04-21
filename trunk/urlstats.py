@@ -77,7 +77,7 @@ def main():
       REPORT_CFG['reportState'] = True  # generate a report based on URL state
     elif o == '--server':
       REPORT_CFG['reportAll'] = False
-      REPORT_CFG['reportServer'] = True  # generate a report of URL grouped by server
+      REPORT_CFG['reportServer'] = True  # list of URL grouped by server
     elif o == '--size':
       REPORT_CFG['reportAll'] = False
       REPORT_CFG['reportSize'] = True  # generate a report based on URL size
@@ -153,7 +153,7 @@ def GenReport(log_file):
 
     # collect content size in byte
     try:
-      size = int(fields[11] )
+      size = int(fields[11])
     except ValueError, e:
       # We encountered some value that can not be converted to a number.
       # Most likely it is the header line, but could be something else.
@@ -219,7 +219,7 @@ def GenReport(log_file):
   # generate a summary of URL state
   if REPORT_CFG['reportState'] or REPORT_CFG['reportAll']:
     PrintTwoCol('NUMBER OF URLS', 'URL STATE')
-    PrintTwoCol ('--------------------', '------------------------')
+    PrintTwoCol ('--------------------', '---------------------')
     for (state, count) in states_sorted:
       PrintTwoCol(str(count).rjust(16), state)
     PrintSeparatorLine()
@@ -227,7 +227,7 @@ def GenReport(log_file):
   # generate a summary of number of URLs per server
   if REPORT_CFG['reportServer'] or REPORT_CFG['reportAll']:
     PrintTwoCol('NUMBER OF URLS', 'SERVERS (total: %i)' % len(servers_sorted))
-    PrintTwoCol ('--------------------', '------------------------')
+    PrintTwoCol ('--------------------', '---------------------')
     for (server, count) in servers_sorted:
       PrintTwoCol(str(count).rjust(16), '%s//%s' % server)
     PrintSeparatorLine()
@@ -235,7 +235,7 @@ def GenReport(log_file):
   # generate a summary of URL size
   if REPORT_CFG['reportSize'] or REPORT_CFG['reportAll']:
     PrintTwoCol('CONTENT SIZE (UP TO)', 'NUMBER OF URLS')
-    PrintTwoCol ('--------------------', '------------------------')
+    PrintTwoCol ('--------------------', '---------------------')
     PrintTwoCol('32MB+', str(very_large_files).rjust(8))
     for (size, count) in content_size_map_sorted:
       PrintTwoCol(str(size).rjust(16), str(count).rjust(8))
