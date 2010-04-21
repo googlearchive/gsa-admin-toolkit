@@ -45,11 +45,13 @@ LONG_OPTIONS = ['help',
                 'listurlslargerthan=',
                 'all',
                 'state',
+                'server',
                 'size',
                 'debug']
 # add a key value pair for each type of report
 REPORT_CFG = {'reportAll': True,
               'reportState': False,
+              'reportServer': False,
               'reportSize': False,
               'listurlslargerthan': -1
              }
@@ -73,6 +75,9 @@ def main():
     elif o == '--state':
       REPORT_CFG['reportAll'] = False
       REPORT_CFG['reportState'] = True  # generate a report based on URL state
+    elif o == '--server':
+      REPORT_CFG['reportAll'] = False
+      REPORT_CFG['reportServer'] = True  # generate a report of URL grouped by server
     elif o == '--size':
       REPORT_CFG['reportAll'] = False
       REPORT_CFG['reportSize'] = True  # generate a report based on URL size
@@ -97,7 +102,7 @@ def GenReport(log_file):
   """Read each line of the log file and generate reports."""
   total_url = 0
   states = dict()
-  hosts = dict()
+  servers = dict()
   # The content sizes in KB that we want to report on
   # The for loop below assumes that this list is in ascending order
   sizes_kb = [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2*1024, 4*1024, 32*1024]
@@ -119,9 +124,11 @@ def GenReport(log_file):
   # the entire file into memory. We do more I/O and keep memory
   # footprint small.
   for line in f:
+    fields = line.split('\t')
+
     # collect url state information
     try:
-      state = line.split('\t')[2].strip()
+      state = fields[2].strip()
     except IndexError, e:
       print 'IndexError:', e
     else:
@@ -131,9 +138,22 @@ def GenReport(log_file):
       else:
         states.update({state: 1})
 
+    # collect information to group urls by server, prot://host:[port]/
+    try:
+      # assume url format protocol://host/path
+      url_elems = fields[0].split('/', 3)
+      server = (url_elems[0], url_elems[2])
+    except IndexError, e:
+      print 'IndexError:', e
+    else:
+      if server in servers:
+        servers[server] += 1
+      else:
+        servers.update({server: 1})
+
     # collect content size in byte
     try:
-      size = int(line.split('\t')[11])
+      size = int(fields[11] )
     except ValueError, e:
       # We encountered some value that can not be converted to a number.
       # Most likely it is the header line, but could be something else.
@@ -179,12 +199,17 @@ def GenReport(log_file):
   states_sorted = states.items()
   states_sorted.sort(key=lambda x: (x[1], x[0]), reverse=True)
 
+  # build a list, reversely sorted by number of URLs
+  servers_sorted = servers.items()
+  servers_sorted.sort(key=lambda x: (x[1], x[0]), reverse=True)
+
   # build a list, reversely sorted by content size threshold
   content_size_map_sorted = content_size_map.items()
   content_size_map_sorted.sort(key=lambda x: (x[0], x[1]), reverse=True)
 
   # print report
   if (REPORT_CFG['reportState'] or
+      REPORT_CFG['reportServer'] or
       REPORT_CFG['reportSize'] or
       REPORT_CFG['reportAll']):
     PrintSeparatorLine()
@@ -193,19 +218,27 @@ def GenReport(log_file):
 
   # generate a summary of URL state
   if REPORT_CFG['reportState'] or REPORT_CFG['reportAll']:
-    PrintTwoCol('  URL STATE', 'NUMBER OF URLS')
-    PrintTwoCol ('--------------------------', '--------------')
+    PrintTwoCol('NUMBER OF URLS', 'URL STATE')
+    PrintTwoCol ('--------------------', '------------------------')
     for (state, count) in states_sorted:
-      PrintTwoCol(state, count)
+      PrintTwoCol(str(count).rjust(16), state)
+    PrintSeparatorLine()
+
+  # generate a summary of number of URLs per server
+  if REPORT_CFG['reportServer'] or REPORT_CFG['reportAll']:
+    PrintTwoCol('NUMBER OF URLS', 'SERVERS (total: %i)' % len(servers_sorted))
+    PrintTwoCol ('--------------------', '------------------------')
+    for (server, count) in servers_sorted:
+      PrintTwoCol(str(count).rjust(16), '%s//%s' % server)
     PrintSeparatorLine()
 
   # generate a summary of URL size
   if REPORT_CFG['reportSize'] or REPORT_CFG['reportAll']:
     PrintTwoCol('CONTENT SIZE (UP TO)', 'NUMBER OF URLS')
-    PrintTwoCol ('--------------------------', '--------------')
-    PrintTwoCol('larger than 32MB', very_large_files)
+    PrintTwoCol ('--------------------', '------------------------')
+    PrintTwoCol('32MB+', str(very_large_files).rjust(8))
     for (size, count) in content_size_map_sorted:
-      PrintTwoCol(str(size).rjust(16), count)
+      PrintTwoCol(str(size).rjust(16), str(count).rjust(8))
 
   # TODO(Jason): generate a summary of various extensions
   # TODO(Jaosn): generate a summary of content_type
@@ -221,8 +254,9 @@ def PrintSeparatorLine():
   print '*********************************************'
 
 
-def PrintTwoCol(field, value):
-  print '%-30s\t%10s' % (field, value)
+def PrintTwoCol(col1, col2):
+  #print '%-30s\t%10s' % (col1, col2)
+  print '%16s\t%s' % (col1, col2)
 
 
 def Usage():
