@@ -97,6 +97,7 @@ def GenReport(log_file):
   """Read each line of the log file and generate reports."""
   total_url = 0
   states = dict()
+  hosts = dict()
   # The content sizes in KB that we want to report on
   # The for loop below assumes that this list is in ascending order
   sizes_kb = [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2*1024, 4*1024, 32*1024]
@@ -159,11 +160,11 @@ def GenReport(log_file):
       if (REPORT_CFG['listurlslargerthan'] != -1 and
           size > REPORT_CFG['listurlslargerthan']):
         print '%16s\t%s' % (line.split('\t')[11], line.split('\t')[0])
-        
-    # TODO (Jason): collect extension info
-    # TODO (Jason): collect content_type info
-    # TODO (Jason): collect URL length info, such as longer than a threshold
-    #               or way longer than average, and print the extra long urls
+
+    # TODO(Jason): collect extension info
+    # TODO(Jason): collect content_type info
+    # TODO(Jason): collect URL length info, such as longer than a threshold
+    #              or way longer than average, and print the extra long urls
   f.close()
 
   # remove the header
@@ -205,9 +206,9 @@ def GenReport(log_file):
     PrintTwoCol('larger than 32MB', very_large_files)
     for (size, count) in content_size_map_sorted:
       PrintTwoCol(str(size).rjust(16), count)
-      
-  # TODO (Jason): generate a summary of various extensions
-  # TODO (Jaosn): generate a summary of content_type
+
+  # TODO(Jason): generate a summary of various extensions
+  # TODO(Jaosn): generate a summary of content_type
 # END of GenReport
 
 
