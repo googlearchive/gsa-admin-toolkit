@@ -48,6 +48,7 @@ pause/resume crawl, get crawl status, shutdown.
 __author__ = "alastair@mcc-net.co.uk (Alastair McCormack)"
 
 
+import cgi
 import os.path
 import logging
 import sys
@@ -59,6 +60,7 @@ import urllib2
 import urllib
 import cookielib
 import re
+import time
 import urlparse
 from optparse import OptionParser, OptionGroup
 
@@ -328,6 +330,89 @@ class gsaWebInterface:
     # Form submit did not work if content contains this string: "Forgot Your Password?"
     # content = result.read()
 
+  def _unescape(self, s):
+    s = s.replace('&amp;', '&')
+    return s
+
+  def getAllUrls(self):
+    """Retrieve all the URLs in the Crawl Diagnostics.
+
+       The URLs can be extraced from the crawl diagnostics URL with
+       actionType=contentStatus.  For example, the URL in link
+
+       /EnterpriseController?actionType=contentStatus&...&uriAt=http%3A%2F%2Fwww.google.com%2F
+
+       is http://www.google.com/
+
+       We only follow crawl diagnostic URLs that contain actionType=contentStatus
+    """
+    self._login()
+    log.debug("Retrieving URLs from Crawl Diagostics")
+    tocrawl = set([self.baseURL + '?actionType=contentDiagnostics&sort=crawled'])
+    crawled = set([])
+    doc_urls = set([])
+    #url_status_regex = re.compile(
+    #        r'about this page</strong>.*?<a href.*?> Link to this page</a>'  )
+    href_regex = re.compile(r'<a href="(.*?)"')
+    print time.ctime()
+  
+    while 1:
+      try:
+        #print 'have %i links to crawl' % len(tocrawl)
+        crawling = tocrawl.pop()
+        #print 'crawling %s' % crawling
+      except KeyError:
+        raise StopIteration
+      url = urlparse.urlparse(crawling)
+      request = urllib2.Request(crawling)
+      try:
+        result = self._openurl(request)
+      except:
+        print 'unable to open url'
+        continue
+      content = result.read()
+      crawled.add(crawling)
+      # determine whether this is a url status page
+      #section = url_status_regex.findall(msg)
+      #if len(section) > 0:
+      #  url = href_regex.findall(''.join(section))
+      #  print ''.join(url)
+
+      links = href_regex.findall(content)
+      #print 'found %i links' % len(links)
+  
+      for link in (links.pop(0) for _ in xrange(len(links))):
+        #print 'found a link: %s' % link
+        if link.startswith('/'):
+          link = url[0] + '://' + url[1] + link
+          link = self._unescape(link)
+          if link not in crawled:
+            #print 'this links has not been crawled'
+            if (link.find('actionType=contentDiagnostics') != -1 and 
+                 link.find('sort=excluded') == -1 and
+                 link.find('sort=errors') == -1 and
+                 link.find('view=excluded') == -1 and
+                 link.find('view=successful') == -1 and
+                 link.find('view=errors') == -1): 
+              tocrawl.add(link)
+              #print 'add this link to my tocrawl list'
+            elif link.find('actionType=contentStatus') != -1:
+              #print "found a contentStatus link %s" % link
+              # extract the document URL
+              doc_url = ''.join(cgi.parse_qs(urlparse.urlsplit(link)[3])['uriAt'])
+              if doc_url not in doc_urls:
+                print doc_url
+                doc_urls.add(doc_url)
+            else:
+              pass
+              #print 'we are not going to crawl this link %s' % link
+          else:
+            pass
+            #print 'already crawled %s' % link
+        else:
+          #print 'we are not going to crawl this link %s' % link
+          pass
+
 
 ###############################################################################
 # MAIN
@@ -531,13 +616,11 @@ if __name__ == "__main__":
       log.error("Cache timeout is not an integer: %s" % (cachetimeout))
       sys.exit(3)
 
-  elif action == "all_urls":
-    if not options.outputFile:
-      log.error("Output file not given")
-      sys.exit(3)
-    log.info("Retrieving rls in crawl diagnostics to %s" % options.outputFile)
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
-    log.info("All URLs exported.")
-
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.setAccessControl(options.cachetimeout)
+
+  elif action == "all_urls":
+    log.info("Retrieving rls in crawl diagnostics to %s" % options.outputFile)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI.getAllUrls()
+    log.info("All URLs exported.")
