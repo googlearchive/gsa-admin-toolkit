@@ -334,7 +334,7 @@ class gsaWebInterface:
     s = s.replace('&amp;', '&')
     return s
 
-  def getAllUrls(self):
+  def getAllUrls(self, out):
     """Retrieve all the URLs in the Crawl Diagnostics.
 
        The URLs can be extraced from the crawl diagnostics URL with
@@ -351,16 +351,13 @@ class gsaWebInterface:
     tocrawl = set([self.baseURL + '?actionType=contentDiagnostics&sort=crawled'])
     crawled = set([])
     doc_urls = set([])
-    #url_status_regex = re.compile(
-    #        r'about this page</strong>.*?<a href.*?> Link to this page</a>'  )
     href_regex = re.compile(r'<a href="(.*?)"')
-    print time.ctime()
   
     while 1:
       try:
-        #print 'have %i links to crawl' % len(tocrawl)
+        log.debug('have %i links to crawl' % len(tocrawl))
         crawling = tocrawl.pop()
-        #print 'crawling %s' % crawling
+        log.debug('crawling %s' % crawling)
       except KeyError:
         raise StopIteration
       url = urlparse.urlparse(crawling)
@@ -372,22 +369,17 @@ class gsaWebInterface:
         continue
       content = result.read()
       crawled.add(crawling)
-      # determine whether this is a url status page
-      #section = url_status_regex.findall(msg)
-      #if len(section) > 0:
-      #  url = href_regex.findall(''.join(section))
-      #  print ''.join(url)
 
       links = href_regex.findall(content)
-      #print 'found %i links' % len(links)
+      log.debug('found %i links' % len(links))
   
       for link in (links.pop(0) for _ in xrange(len(links))):
-        #print 'found a link: %s' % link
+        log.debug('found a link: %s' % link)
         if link.startswith('/'):
           link = url[0] + '://' + url[1] + link
           link = self._unescape(link)
           if link not in crawled:
-            #print 'this links has not been crawled'
+            log.debug('this links has not been crawled')
             if (link.find('actionType=contentDiagnostics') != -1 and 
                  link.find('sort=excluded') == -1 and
                  link.find('sort=errors') == -1 and
@@ -397,20 +389,21 @@ class gsaWebInterface:
               tocrawl.add(link)
               #print 'add this link to my tocrawl list'
             elif link.find('actionType=contentStatus') != -1:
-              #print "found a contentStatus link %s" % link
               # extract the document URL
               doc_url = ''.join(cgi.parse_qs(urlparse.urlsplit(link)[3])['uriAt'])
               if doc_url not in doc_urls:
-                print doc_url
+                out.write(doc_url + '\n')
                 doc_urls.add(doc_url)
+                if len(doc_urls) % 100 == 0:
+                  print len(doc_urls)
             else:
+              log.debug('we are not going to crawl this link %s' % link)
               pass
-              #print 'we are not going to crawl this link %s' % link
           else:
+            log.debug('already crawled %s' % link)
             pass
-            #print 'already crawled %s' % link
         else:
-          #print 'we are not going to crawl this link %s' % link
+          log.debug('we are not going to crawl this link %s' % link)
           pass
 
 
@@ -620,7 +613,17 @@ if __name__ == "__main__":
     gsaWI.setAccessControl(options.cachetimeout)
 
   elif action == "all_urls":
-    log.info("Retrieving rls in crawl diagnostics to %s" % options.outputFile)
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
-    gsaWI.getAllUrls()
-    log.info("All URLs exported.")
+    if not options.outputFile:
+      log.error("Output file not given")
+      sys.exit(3)
+    try:
+      f = open(options.outputFile, 'w')
+    except IOError:
+      log.error("unable to open %s to write" % options.outputFile)
+      sys.exit(3)
+    else:
+      log.info("Retrieving URLs in crawl diagnostics to %s" % options.outputFile)
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI.getAllUrls(f)
+      f.close()
+      log.info("All URLs exported.")
