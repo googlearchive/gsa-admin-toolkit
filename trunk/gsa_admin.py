@@ -37,6 +37,11 @@ hellohello -o ~/tmp/o.xml -v
 ./gsa.py -n <host> --port 8000 -u admin -p <pw> -i --sign-password
 hellohello -f ~/tmp/o2.xml -v
 
+4. Export all the URLs to a file:
+
+./gsa_admin.py --hostname=<host> --username=admin 
+--password=<pw> --all_urls --output=/tmp/all_urls
+
 Note that you must use the same password to sign a file that you used
 when exporting. You will get an error when importing if you do not do
 this.
