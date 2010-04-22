@@ -59,6 +59,7 @@ import urllib2
 import urllib
 import cookielib
 import re
+import urlparse
 from optparse import OptionParser, OptionGroup
 
 # Required for utf-8 file compatibility
@@ -371,6 +372,9 @@ if __name__ == "__main__":
   actionOptionsGrp.add_option("-a", "--set", dest="setaccesscontrol", action="store_true",
            help="Set Access Control settings")
 
+  actionOptionsGrp.add_option("-l", "--all_urls", dest="all_urls",
+          help="Export all URLs from GSA", action="store_true")
+
   parser.add_option_group(actionOptionsGrp)
 
   # gsaHostOptions
@@ -403,7 +407,9 @@ if __name__ == "__main__":
     logLevel = startingLevel - logOffset
     log.setLevel(logLevel)
 
-  if not options.setaccesscontrol:
+  # Actions actimport, export, sign, & verify need signpassword
+  # if not options.setaccesscontrol:
+  if options.actimport or options.export or options.sign or options.verify:
     # Verify opts
     if not options.signpassword:
       log.error("Signing password not given")
@@ -442,6 +448,12 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "verify"
+  if options.all_urls:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "all_urls"
   if not action:
       log.error("No action specified")
       sys.exit(3)
@@ -518,6 +530,14 @@ if __name__ == "__main__":
     except ValueError:
       log.error("Cache timeout is not an integer: %s" % (cachetimeout))
       sys.exit(3)
+
+  elif action == "all_urls":
+    if not options.outputFile:
+      log.error("Output file not given")
+      sys.exit(3)
+    log.info("Retrieving rls in crawl diagnostics to %s" % options.outputFile)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    log.info("All URLs exported.")
 
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.setAccessControl(options.cachetimeout)
