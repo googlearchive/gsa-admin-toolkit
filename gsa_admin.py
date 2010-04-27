@@ -338,11 +338,83 @@ class gsaWebInterface:
   def _unescape(self, s):
     s = s.replace('&amp;', '&')
     return s
+  
+  def syncDatabases(self, database_list):
+    """Sync databases in the GSA.
+    
+    Args:
+      database_list: a List of String, a list of database name to sync
+    """
+    
+    self._login()
+    
+    for database in database_list:
+      log.info("Syncing %s ..." % database)
+      param = urllib.urlencode({"actionType": "syncDatabase",
+                                "entryName": database})
+      request = urllib2.Request(self.baseURL + "?" + param)
+      
+      try:
+        result = self._openurl(request)
+      except:
+        log.error("Unable to sync %s properly" % database)
+    
+  def exportKeymatches(self, frontend, out):
+    """Export all keymatches for a frontend.
+    
+    Args:
+      frontend: a String, the frontend name.
+      out: a File, the file to write to.
+    """
+    
+    self._login()
+    
+    log.info("Retrieving the keymatch file for %s" % frontend)
+    
+    param = urllib.urlencode({'actionType' : 'frontKeymatchImport',
+                              'frontend' : frontend,
+                              'frontKeymatchExportNow': 'Export KeyMatches Now',
+                              'startRow' : '1', 'search' : ''})
+    
+    request = urllib2.Request(self.baseURL + "?" + param)
+    try:
+      result = self._openurl(request)
+      output = result.read()
+      out.write(output)
+    except Exception, e:
+      log.error("Unable to retrieve Keymatches for %s" % frontend)
+      log.error(e)
+      
+  def exportSynonyms(self, frontend, out):
+    """Export all Related Queries for a frontend.
+    
+    Args:
+      frontend: a String, the frontend name.
+      out: a File, the file to write to.
+    """
+    
+    self._login()
+    
+    log.info("Retrieving the Related Queries file for %s" % frontend)
+    
+    param = urllib.urlencode({'actionType' : 'frontSynonymsImport',
+                              'frontend' : frontend,
+                              'frontSynonymsExportNow': 'Export Related Queries Now',
+                              'startRow' : '1', 'search' : ''})
+    
+    request = urllib2.Request(self.baseURL + "?" + param)
+    try:
+      result = self._openurl(request)
+      output = result.read()
+      out.write(output)
+    except:
+      log.error("Unable to retrieve Related Queries for %s" % frontend)
+    
 
   def getAllUrls(self, out):
     """Retrieve all the URLs in the Crawl Diagnostics.
 
-       The URLs can be extraced from the crawl diagnostics URL with
+       The URLs can be extracted from the crawl diagnostics URL with
        actionType=contentStatus.  For example, the URL in link
 
        /EnterpriseController?actionType=contentStatus&...&uriAt=http%3A%2F%2Fwww.google.com%2F
@@ -436,6 +508,12 @@ if __name__ == "__main__":
 
   parser.add_option("--cache-timeout", dest="cachetimeout",
           help="Value for Authorization Cache Timeout")
+  
+  parser.add_option("--sources", dest="sources",
+                    help="List of databases to sync (database1,database2,database3)")
+  
+  parser.add_option("--frontend", dest="frontend",
+                    help="Frontend used to export keymatches or related queries")
 
   # actionsOptions
   actionOptionsGrp = OptionGroup(parser, "Actions:")
@@ -457,6 +535,15 @@ if __name__ == "__main__":
 
   actionOptionsGrp.add_option("-l", "--all_urls", dest="all_urls",
           help="Export all URLs from GSA", action="store_true")
+  
+  actionOptionsGrp.add_option("-d" ,"--database_sync", dest="database_sync",
+                              help="Sync databases", action="store_true")
+  
+  actionOptionsGrp.add_option("-k" ,"--keymatches_export", dest="keymatches_export",
+                              help="Export All Keymatches", action="store_true")
+  
+  actionOptionsGrp.add_option("-y" ,"--synonyms_export", dest="synonyms_export",
+                              help="Export All Related Queries", action="store_true")
 
   parser.add_option_group(actionOptionsGrp)
 
@@ -537,11 +624,29 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "all_urls"
+  if options.database_sync:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "database_sync"
+  if options.keymatches_export:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "keymatches_export"
+  if options.synonyms_export:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "synonyms_export"
   if not action:
       log.error("No action specified")
       sys.exit(3)
 
-  if action == "import" or action == "export":
+  if action != "sign" or action != "verify":
     #Check user, password, host
     if not options.gsaHostName:
       log.error("hostname not given")
@@ -632,3 +737,51 @@ if __name__ == "__main__":
       gsaWI.getAllUrls(f)
       f.close()
       log.info("All URLs exported.")
+      
+  elif action == "database_sync":
+    if not options.sources:
+      log.error("No sources to sync")
+      sys.exit(3)
+    databases = options.sources.split(",")
+    log.info("Sync'ing databases %s" % options.sources)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsac = gsaWI.syncDatabases(databases)
+    log.info("Sync completed")
+    
+  elif action == "keymatches_export":
+    if not options.outputFile:
+      log.error("Output file not given")
+      sys.exit(3)
+    if not options.frontend:
+      log.error("No frontend defined")
+      sys.exit(3)
+    try:
+      f = open(options.outputFile, 'w')
+    except IOError:
+      log.error("unable to open %s to write" % options.outputFile)
+      sys.exit(3)
+      
+    log.info("Exporting keymatches for %s to %s" % (options.frontend, options.outputFile) )
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI.exportKeymatches(options.frontend, f)
+    f.close()
+  
+  elif action == "synonyms_export":
+    if not options.outputFile:
+      log.error("Output file not given")
+      sys.exit(3)
+    if not options.frontend:
+      log.error("No frontend defined")
+      sys.exit(3)
+    try:
+      f = open(options.outputFile, 'w')
+    except IOError:
+      log.error("unable to open %s to write" % options.outputFile)
+      sys.exit(3)
+      
+    log.info("Exporting synonyms for %s to %s" % (options.frontend, options.outputFile) )
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI.exportSynonyms(options.frontend, f)
+    f.close()
+  
+    
