@@ -1,0 +1,678 @@
+ <html>
+ 
+ <head>
+ 
+ <HTA:APPLICATION
+  APPLICATIONNAME="GSA Windows Test Utility"
+  SCROLL="yes"
+  SINGLEINSTANCE="yes"
+  WINDOWSTATE="normal"
+  ICON="http://www.google.com/favicon.ico"
+ >
+ 
+ <title>GSA Windows Test Utility</title>
+ </head>
+ 
+<link href="http://www.google.com/enterprise/css/styles.css" rel="stylesheet" type="text/css" media="screen" /> 
+
+
+ <STYLE type="text/css">
+   pre  
+   {
+   	background-color: #FAFAFA;
+    border-bottom-color: #BBB;
+    border-bottom-style: solid;
+    border-bottom-width: 1px;
+    border-left-color: #BBB;
+    border-left-style: solid;
+    border-left-width: 1px;
+    border-right-color: #BBB;
+    border-right-style: solid;
+    border-right-width: 1px;
+    border-top-color: #BBB;
+    border-top-style: solid;
+    border-top-width: 1px;
+    color: #007000;
+    display: block;
+    font-family: monospace;
+    font-size: 12px;
+    xheight: 425px;
+    padding-bottom: 11px;
+    padding-left: 11px;
+    padding-right: 11px;
+    padding-top: 11px;
+    white-space: pre;
+    xwidth: 100px;
+    word-wrap: break-word;
+    }
+ </STYLE>
+
+ <script language="javascript">
+     function none() { }
+     function init() { }
+</script>
+
+
+<script language="VBScript">
+
+Dim UPN, AD_SPN, AD_KVNO, KT_KVNO, KT_SPN, DNS_ANAME, exception
+
+Sub ClearOutput()
+     Set doutput = document.getElementById("dout")
+     doutput.innerHTML = ""
+     username = ""
+     UPN = ""
+     AD_SPN = ""
+     AD_KVNO = ""
+     KT_KVNO = ""
+     KT_SPN = ""
+     DNS_ANAME = ""
+     exception = false
+End Sub
+
+Sub CheckMITKerberos()
+	Set objFSO = CreateObject("Scripting.FileSystemObject")
+	If objFSO.FileExists ("c:\program files\mit\kerberos\bin\klist.exe") then
+        writeOutput "<font color='green'>---> Found MIT Kerberos Client</font>" 
+	ELSE
+       	writeOutput "<font color='red' size=2>---> Cant find klist.exe in c:\program files\mit\kerberos\bin\klist.exe<br/>Please Install the MIT Kerberos Client for windows <a href='http://web.mit.edu/Kerberos/dist/index.html#kfw-3.2'>MIT Kerberos</a></font>"    
+        exception = true
+    END IF
+End Sub
+
+Sub RunDiag()
+    writeoutput "<font color=black>Starting Diagnostics</font>"
+    Set objdns = document.getElementById("dnsname")
+    'CNAMELookup_Admin  objdns.value
+    CheckforCNAME objdns.value
+    Set objkt = document.getElementById("keytab")
+    ParseKeytab objkt.value
+    Set objuname = document.getElementById("uname")
+    CheckUserEntry  objuname.value
+    VerifyPasswordInKeytab  objkt.value
+    CheckSPNUniqueness AD_SPN
+    VerifyIESettings objdns.value
+End Sub
+
+Sub ShowDSEInfo()
+    'http://msdn.microsoft.com/en-us/library/ms684291(VS.85).aspx
+	Set objSysInfo = CreateObject("ADSystemInfo")
+    on error resume next
+    if exception = true Then
+      exit sub
+    end if 
+    username = objSysInfo.UserName + "<br/>"
+    if err.number = -2147023541 Then
+                writeOutput "<font color='red'>---> Unable to find DomainController. Aborting</font>"        		
+                exception = true
+                Exit Sub
+    End if
+    writeoutput "<font color='green'>---> Contacted DomainController</font>"
+
+	forestdns = "Forest DNS Name: " & objSysInfo.ForestDNSName   + "<br/>"
+	Set objRootDSE = GetObject("LDAP://RootDSE")
+	rootdse =  "Root Domain: " & objRootDSE.Get("RootDomainNamingContext") 
+    dnsserver =  "DNSServer: " & objRootDSE.Get("dnsHostName") 
+    dcfunctional_level =   objRootDSE.Get("domainControllerFunctionality")
+    forest_level =  objRootDSE.Get("forestFunctionality")
+
+    sdcfunctional_level = "Domain Controller Functionality Level: "
+    
+                Select Case dcfunctional_level
+                    Case 0 sdcfunctional_level = sdcfunctional_level + " WIN 2000"
+                    Case 2 sdcfunctional_level = sdcfunctional_level + " WIN 2003"
+                    Case 3 sdcfunctional_level = sdcfunctional_level + " WIN 2008"
+                    Case 4 sdcfunctional_level = sdcfunctional_level + " WIN 2008R2"  
+                End Select    
+
+    sforest_level = "Forest Functionality Level: "
+    
+                Select Case forest_level
+                    Case 0 sforest_level = sforest_level + " WIN 2000"
+                    Case 1 sforest_level = sforest_level + " WIN 2003Mixed"
+                    Case 2 sforest_level = sforest_level + " WIN 2003"
+                    Case 3 sforest_level = sforest_level + " WIN 2008"
+                    Case 4 sforest_level = sforest_level + " WIN 2008R2"  
+                End Select                 
+    
+	strout = "<b>Running Diagnostics for: </b><br/>" & username & forestdns  & dnsserver & "<br/>" & rootdse  & "<br/>" & sdcfunctional_level  & _
+                "<br/>" + sforest_level + "<br/>"
+    writeInfo "<br/>" + strout
+
+End Sub
+
+'Sub CNAMELookup_Admin(lookForCNAME)
+'    if exception = true Then
+'        Exit Sub
+'    End If
+'    strout = ""
+'	Set objRootDSE = GetObject("LDAP://RootDSE")
+'    dnsserver =  objRootDSE.Get("dnsHostName") 
+'    Set objWMIService = GetObject("winmgmts:{impersonationLevel=impersonate}!\\" & dnsserver & "\root\MicrosoftDNS")
+'    Set colItems = objWMIService.ExecQuery("Select * from MicrosoftDNS_CNAMEType Where OwnerName ='" & lookForCNAME & "'")
+'    For Each objItem in colItems
+'        strout = objItem.RecordData
+'    Next  
+'    If strout = "" Then
+'        strout = "<font color='green'>DNS Check....[passed]</font>"
+'    Else
+'        strout = "<font color='red'>DNS Check....[failed]:  " & lookForCNAME & " is a CNAME</font>"
+'    End if
+'    writeOutput strout
+'End Sub
+
+Sub CheckforCNAME(lookForCNAME) 
+    if exception = true Then
+        Exit Sub
+    End If
+    writeoutput "<font color='green'>1 Attempting verify DNS ANAME</font></br>"
+    strResult =  getcommandOutput("%comspec% /c nslookup " & lookForCNAME )
+ 	Set doutput = document.getElementById("dout")
+	namePos = InStr(strResult ,"Aliases:")
+	If namePos > 0 Then
+		writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->DNS Entry provided is a CNAME</font>"
+        writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->Please specify the DNS A-NAME for the GSA.</font>" 
+	Else	   
+   		namePos = InStr(strResult ,"Name:")
+        If namePos > 0 Then
+            writeoutput "<font color=green>&nbsp;&nbsp;&nbsp;--->DNS Entry for the GSA is an A-Name</font>"
+            DNS_ANAME = lookForCNAME
+    	Else
+    		writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->DNS Entry not found</font>"
+    	End If
+	End If
+End Sub
+
+Sub writeOutput(msg)
+     Set doutput = document.getElementById("dout")
+     doutput.innerHTML =  doutput.innerHTML & "<br/>"  & msg
+End Sub 
+
+Sub writeInfo(msg)
+     Set dinfo = document.getElementById("info")
+     dinfo.innerHTML =  dinfo.innerHTML & "<br/>"  & msg
+End Sub 
+
+Sub VerifyPasswordInKeytab(keytab)
+    if exception = true Then
+        Exit Sub
+    End If
+    writeoutput "<font color='green'>4 Attempting to verify password in keytab</font></br>"    
+    strResult =  getktout("%comspec% /c c:\progra~1\mit\kerberos\bin\kinit.exe -V -v -k -t " & keytab & " " & KT_SPN)
+    if (strResult = "Authenticated to Kerberos v5") Then
+        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> Password in Keytab Verified in AD</font></br>"
+    Else
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Password in Keytab Could not be verified in AD</font></br>"
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->   Reset the password in AD and rerun ktpass with that password</font></br>"
+    End If
+End Sub
+
+Sub CheckSPNUniqueness(strAD_KVNO)
+    if exception = true Then
+        Exit Sub
+    End If
+	Dim objHash
+	Set objHash = CreateObject("Scripting.Dictionary")
+	objHash.Add "LOCKOUT", &h0010 
+	objHash.Add "NORMAL_ACCOUNT", &h0200 
+	objHash.Add "TRUSTED_FOR_DELEGATION", &h80000 
+	objHash.Add "USE_DES_KEY_ONLY", &h200000 
+	objHash.Add "DONT_REQ_PREAUTH",  &h400000
+	objHash.Add "PASSWORD_EXPIRED", &h800000 
+
+    writeoutput "<font color='green'>5 Attempting to verify SPN uniqueness in AD</font></br>" 
+    
+  	str_mode = "(servicePrincipalName=" &  strAD_KVNO & ");"
+
+    Set oNSP = GetObject("GC:")
+    For Each oGC in oNSP
+      strGCPath = oGC.ADsPath
+    Next
+
+    Set oConnection = CreateObject("ADODB.Connection")
+    Set oCmd = CReateObject("ADODB.Command")
+    oConnection.Provider = "ADsDSOObject"
+    oConnection.Open "ADs Provider"
+    Set oCmd.ActiveConnection = oConnection
+    oCmd.Properties("Page Size") = 1000
+
+    strADOQuery = "<" + strGCPath + ">;" & str_mode  & "dnsHostName,distinguishedName,servicePrincipalName,objectClass,userprincipalName,msDS-KeyVersionNumber,userAccountControl, samAccountName;subtree"
+    oCmd.CommandText = strADOQuery
+    dn = ""
+    hit_counter = 0
+    Set oRecordSet = oCmd.Execute
+    If oRecordSet.EOF and oRecordSet.Bof Then
+      strout =  "No users found!" & "</br>"
+    Else
+     While Not oRecordset.Eof
+       Dim dn 
+       dn = dn & "[" & oRecordset.Fields("distinguishedName") & "]"
+       hit_counter = hit_counter +1
+       oRecordset.MoveNext
+     Wend
+    End If
+
+    if (hit_counter> 1) Then
+        writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> SPN is not unique: " & strAD_KVNO & "--->"  & dn 
+        writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->   Delete the duplicate SPNs associated with the non-GSA accounts" 
+    Else
+        writeoutput "<font color=green>&nbsp;&nbsp;&nbsp;---> SPN is unique: " & strAD_KVNO & "--->"  & dn 
+    End If
+
+    oRecordset.Close
+    oConnection.Close
+
+End Sub
+
+Sub CheckUserEntry(username)
+    if exception = true Then
+        Exit Sub
+    End If
+	Dim objHash
+    
+    writeoutput "<font color='green'>3 Attempting to contact Active Directory</font></br>"    
+
+	Set objHash = CreateObject("Scripting.Dictionary")
+	objHash.Add "LOCKOUT", &h0010 
+    objHash.Add "ACCOUNTDISABLED", &h0002
+	objHash.Add "NORMAL_ACCOUNT", &h0200 
+	objHash.Add "TRUSTED_FOR_DELEGATION", &h80000 
+	objHash.Add "USE_DES_KEY_ONLY", &h200000 
+	objHash.Add "DONT_REQ_PREAUTH",  &h400000
+	objHash.Add "PASSWORD_EXPIRED", &h800000 
+
+   	str_mode = "(samAccountName=" &  username & ");"
+
+    Set oNSP = GetObject("GC:")
+    For Each oGC in oNSP
+      strGCPath = oGC.ADsPath
+    Next
+    Set oConnection = CreateObject("ADODB.Connection")
+    Set oCmd = CReateObject("ADODB.Command")
+    oConnection.Provider = "ADsDSOObject"
+    oConnection.Open "ADs Provider"
+    Set oCmd.ActiveConnection = oConnection
+    oCmd.Properties("Page Size") = 1000
+    strADOQuery = "<" + strGCPath + ">;" & str_mode  & "dnsHostName,distinguishedName,servicePrincipalName,objectClass,userprincipalName,msDS-KeyVersionNumber,userAccountControl, samAccountName;subtree"
+    oCmd.CommandText = strADOQuery
+    Set oRecordSet = oCmd.Execute
+    If oRecordSet.EOF and oRecordSet.Bof Then
+      writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Username/samAccountName [" & username & "] not found: </font></br>"
+      writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Please verify the username registered to the GSA</font></br>"
+      writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->(enter the username without the domain eg:  user1  and not YOURDOMAIN\user1 or user1@DOMAIN)</font></br>"     
+    Else
+     While Not oRecordset.Eof
+       Dim dn 
+       dn = oRecordset.Fields("distinguishedName") 
+       strout = strout & "<li>DN:  " & dn & "</br>"
+       vObjClass = oRecordset.Fields("objectClass")
+       strClass = vObjClass( UBound(vObjClass) )
+       strout = strout & " Class: " & strClass & "</br>"
+       If UCase(strClass) = "COMPUTER" Then
+          writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Account is not a User account: " & oRecordset.Fields("dnsHostName") & "; it is a COMPUTER account</font></br>"
+          writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please delete this account in AD and recreate as a User account (not computer account)</font></br>"            
+       Else
+          writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> Found User account [" & username & "]</font></br>"                   
+          username = oRecordset.Fields("samAccountName")
+          AD_UPN = oRecordset.Fields("userprincipalName")
+          AD_KVNO = oRecordset.Fields("msDS-KeyVersionNumber")
+          userAccountControl = oRecordset.Fields("userAccountControl")
+          
+          writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD UserPrincipalName: " & AD_UPN & "</font><br/>"
+          writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD KVNO: " & AD_KVNO & "</font><br/>"
+                    
+          If clng(AD_KVNO) = clng(KT_KVNO) Then
+            writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> KVNOs in AD and keytab matched</font><br/>"                  
+          Else
+            writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->  KVNO in AD and keytab do not match</font><br/>"             
+          End If 
+          
+          Dim objUser, intUAC,Key
+          
+          Set objUser = GetObject("LDAP://" + dn)
+          intUAC = objUser.Get("userAccountControl")
+
+
+          For Each Key In objHash.Keys
+            If objHash(Key) And intUAC  Then 
+                Select Case Key 
+                    Case "ACCOUNTDISABLED"
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> AD Useraccount is locked"  & "</font></br>"
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please unlock this account in AD"  & "</font></br>"                   
+                    Case "LOCKOUT"
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> AD Useraccount is locked"  & "</font></br>"
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please unlock this account in AD"  & "</font></br>"                       
+                    Case "TRUSTED_FOR_DELEGATION"  
+                        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD Account Trusted for Delegation"  & "</font></br>"
+                    Case "USE_DES_KEY_ONLY" 
+                        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD DES Encryption Enabled"  & "</font></br>"
+                    Case "PASSWORD_EXPIRED"              
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> AD Password Expired"  & "</font></br>"
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->   Please reset the password and rerun ktpass.  If possible set the AD flag to never expire this account."  & "</font></br>"                        
+                End Select
+            Else
+                Select Case Key 
+                    Case "ACCOUNTDISABLED"
+                        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD Useraccount is unlocked"  & "</font></br>"                 
+                    Case "TRUSTED_FOR_DELEGATION"  
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> ADAccount is NOT Trusted for Delegation"  & "</font></br>"
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->   Please enable 'Trust this user for delegation to any service'</font></br>"                        
+                    Case "USE_DES_KEY_ONLY" 
+                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> AD DES Encryption is Disabled"  & "</font></br>"
+                    Case "PASSWORD_EXPIRED"              
+                        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD Password has not Expired"  & "</font></br>"
+                End Select            
+            End If
+          Next
+	
+       End If
+
+       On Error Resume Next
+       vSPNs = oRecordset.Fields("servicePrincipalName")
+       ad_kt_spn_matched = false
+       kt_spn_without_realm = Mid(KT_SPN,1,Instr(KT_SPN,"@")-1)
+            
+
+       For Each vName in vSPNs
+       		 writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD SPN Found: " & vName  & "</font></br>"
+             writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> Comparing SPN from AD against keytab...</font></br>"
+             If vName = kt_spn_without_realm Then
+                AD_SPN = vName
+                ad_kt_spn_matched = true
+             End If
+       Next
+       
+       if (ad_kt_spn_matched = true) Then
+         writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->  SPN/Principal in Keytab and AD Matched: " & kt_spn_without_realm & "</font></br>"
+         if kt_spn_without_realm = ("HTTP/" & Lcase(DNS_ANAME)) Then
+              writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> DNS ANAME matches the host portion of the SPN</font></br>"
+         Else
+              writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->  DNS ANAME does not match the host portion of the SPN</font></br>"
+              writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->  DNS ANAME [" & DNS_ANAME & "] does not match the host portion of the SPN [" & kt_spn_without_realm &"]</font></br>"
+              writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->  Verify the correct useraccount for the GSA has a host portion of that matches the DNS ANAME</font></br>"              
+              exception = true
+              exit sub
+         End If
+       Else
+         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> SPN/Principal in Keytab does not match any AD SPNs for user: " & username & "</font></br>"       
+         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Check if  [" & username & "] is actually the user entered as the -mapuser parameter wil running ktpass</font></br>"                
+       End If
+
+       if (AD_UPN = KT_SPN) Then
+        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> Principal in Keytab matches UPN in AD: " & AD_UPN & "</font></br>"
+       Else
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Principal in Keytab [" & KT_SPN & "] does not match UPN in AD: " & AD_UPN & "</font></br>"
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> The UPN for the GSA's user must match the principal name specified in  the keytab</font></br>"        
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Delete the user account in AD, regenerate it and rerun ktpass</font></br>"                
+       End If 
+       
+       oRecordset.MoveNext
+     Wend
+    End If
+    oRecordset.Close
+    oConnection.Close
+End Sub
+
+Sub ParseKeytab(keytabfile)
+    if exception = true Then
+        Exit Sub
+    End If
+    writeoutput "<font color='green'>2 Attempting to parse keytab</font></br>"
+	Set objFSO = CreateObject("Scripting.FileSystemObject")
+	If objFSO.FileExists (keytabfile) then
+    Else
+        writeoutput "<font color=red>2 Keytab file specified does not exist</font>"
+        exception = true
+        Exit Sub
+    End If
+    strResult =  getcommandOutput("%comspec% /c c:\progra~1\mit\kerberos\bin\klist.exe -k -t -e  " & keytabfile )
+    
+    arrlines= split(strResult,vbcrlf)
+    ' check to see if we have more than 1 key in this keytab:
+    if ubound(arrlines) > 4 Then
+        writeoutput "<font color=red>2 Keytab file has more than one entry</font>"
+        writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> The GSA can only process keytabs with one Principal</font>"
+        exception = true
+        Exit Sub        
+    End If
+    arrlines(3) = Trim(arrlines(3))
+    arrentries =  split(arrlines(3)," ")
+    KT_KVNO = ""
+    KT_KVNO = arrentries(0)
+    KT_SPN = arrentries(3)
+    raw_out = Trim(arrlines(3))
+    KT_ENC = Mid(raw_out,Instr(raw_out,"("),30)
+    
+    if KT_KVNO = "" Then
+        writeoutput "<font color='red'>2 Unable to parse Keytab: "& strResult & "</font><br/>"
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please verify the file specified is a keytab</font>"
+        'Exit Sub
+    End If
+    writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->Found KVNO: "& KT_KVNO  & "</font></br>"
+    writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->Found Principal: "& KT_SPN  & "</font></br>"
+    
+    if (KT_ENC = "(DES cbc mode with RSA-MD5)") Then
+        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->Found Encryption is DES: "& KT_ENC  & "</font></br>"
+    else
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Keytab Encryption is NOT DES: "& KT_ENC  & "</font></br>"    
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Please run ktpass again and specify the encryption type</font></br>"            
+    end if 
+    'now parse out the KT_SPN to see if its in correct case: HTTP/gsa.yourdomain.com@YOURDOMAIN.COM 
+    'the parsing logic below isn't that good...
+    prefix = Mid(KT_SPN,1,5)
+    SPN_less_prefix = MID(KT_SPN,6,60)
+    host = Mid(SPN_less_prefix,1,instr(SPN_less_prefix,"@")-1)    
+    realm = MID(SPN_less_prefix,instr(SPN_less_prefix,"@")+1,80)
+    
+    If (prefix = "" OR host = "" OR realm = "") Then
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal in keytab is not in correct format:  Needs match case/format HTTP/gsa.yourdomain.com@YOURDOMAIN.COM </font></br>"
+        Exit Sub    
+    End IF
+
+    if  prefix <> UCASE(prefix) Then
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal-prefix in keytab is not in correct case format</font></br>"
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: <b>HTTP</b>/gsa.yourdomain.com@YOURDOMAIN.COM</font></br>" 
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please rerun ktpass using the <i>exact</i> case-sensitive format shown above</font></br>"                                          
+                 
+    elseif host <> LCASE(host) Then
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal-host in keytab is not in correct case format (Needs match case/format): HTTP/gsa.yourdomain.com@YOURDOMAIN.COM</font></br>"    
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: HTTP/<b>gsa.yourdomain.com</b>@YOURDOMAIN.COM</font></br>"                          
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please rerun ktpass using the <i>exact</i> case-sensitive format shown above</font></br>"                                                  
+    elseif realm <> UCASE(realm) Then
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal-realm in keytab is not in correct case format (Needs match case/format): HTTP/gsa.yourdomain.com@YOURDOMAIN.COM:</font></br>"        
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: HTTP/gsa.yourdomain.com@<b>YOURDOMAIN.COM</b></font></br>"                                  
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please rerun ktpass using the <i>exact</i> case-sensitive format shown above</font></br>"                                          
+    else
+        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->Principal in keytab is in correct case format: HTTP/gsa.yourdomain.com@YOURDOMAIN.COM</font></br>"
+    End If 
+   
+    
+End Sub
+
+Sub VerifyIESettings(dnsentry)
+   'http://mirror2.activexperts.com/activmonitor/windowsmanagement/scripts/desktop/internet/#LSIESZ.htm
+    if exception = true Then
+        Exit Sub
+    End If
+    
+    writeoutput "<font color='green'>5 Attempting to verify IE Zone settings</font></br>" 
+    
+    is_in_zone = false
+    strComputer = "."
+    on error resume next 
+    'Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\cimv2\Applications\MicrosoftIE")
+    'if err.number = -2147217394 Then
+    '    writeoutput "<font color=red>Unable to determine IE Version via registry (non admin user)</font>"   
+    'End if
+    'Set colIESettings = objWMIService.ExecQuery ("Select * from MicrosoftIE_Summary")
+    'For Each strIESetting in colIESettings
+    '   writeoutput "Client IEVersion: " & strIESetting.Version
+    'Next
+    
+    Set objShell = CreateObject("WScript.Shell")
+    Set objFSO = CreateObject("Scripting.FileSystemObject")
+    strValue = objShell.RegRead("HKLM\Software\Microsoft\Internet Explorer\Version")
+    writeoutput "&nbsp;&nbsp;&nbsp;--->  Internet Explorer Version: " & strValue
+    
+    Const HKEY_CURRENT_USER = &H80000001
+    Set objReg = GetObject("winmgmts:" & "{impersonationLevel=impersonate}\\" & strComputer & "\root\default:StdRegProv")
+
+    strKeyPath = "Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap\Domains"
+    objReg.EnumKey HKEY_CURRENT_USER, strKeyPath, arrSubKeys
+    
+    if isNull(arrSubKeys) then
+        writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> GSA ANAME not found in IE Zone settings</font>"
+        writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->   The DNS ANAME for the GSA must be set in a Local & Trusted IE zone for IWA.</font>"                
+        exit sub
+    end if
+    
+    For Each subkey In arrSubKeys
+        strDomains = strKeyPath & "\" & subkey
+        objReg.EnumKey HKEY_CURRENT_USER, strDomains, arrDomainKeys
+        For Each domainKey in arrDomainKeys
+            fqdn = domainKey & "." & subkey
+            if (lcase(fqdn) =  lcase(DNS_ANAME)) THen
+                gsazone = strKeyPath & "\" & subkey & "\" & domainKey
+                objReg.EnumValues HKEY_CURRENT_USER, gsazone, gsazonevalues, gsatypes
+                For i = 0 to Ubound(gsazonevalues)
+                    objReg.GetDWORDValue HKEY_CURRENT_USER, gsazone, gsazonevalues(i),dwValue
+                Next
+                Select Case dwValue
+                    Case 0 strZone = "My Computer"
+                    Case 1 strZone = "Local Intranet zone"
+                    Case 2 strZone = "Trusted Sites Zone"
+                    Case 3 strZone = "Internet Zone"
+                    Case 4 strZone = "Restricted Sites Zone"   
+                End Select
+
+                if (strZone = "Local Intranet zone") Then
+                    writeoutput "<font color=green>&nbsp;&nbsp;&nbsp;---> GSA ANAME Found in IE Local Intranet Zone</font>"                
+                Else
+                    writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> GSA ANAME Fount in IE [" & strZone & "] zone</font>" 
+                    writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->   The DNS ANAME for the GSA must be set in a Local & Trusted IE zone for IWA.</font>"                            
+                End If
+                is_in_zone = true
+            End If
+        Next
+    Next
+    
+    if (is_in_zone = false) Then
+        writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> GSA ANAME not found in IE Zone settings</font>"
+        writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->   The DNS ANAME for the GSA must be set in a Local & Trusted IE zone for IWA.</font>"        
+    End If
+    
+End Sub
+
+Function getktout(strCommand)
+   dim objShell, objExecObject, strOutput
+   Set objShell = CreateObject("WScript.Shell")
+   Set objExecObject = objShell.Exec(strCommand)
+   Do Until objExecObject.StdErr.AtEndOfStream
+      strOutput = objExecObject.StdErr.ReadLine()     
+      getktout = strOutput
+   loop
+End Function
+
+Function getcommandOutput(cmd)
+
+  Const OpenAsDefault = -2
+  Const FailIfNotExist = 0
+  Const ForReading = 1
+
+  Set oShell = CreateObject("WScript.Shell")
+  Set oFSO = CreateObject("Scripting.FileSystemObject")
+  sTemp = oShell.ExpandEnvironmentStrings("%TEMP%")
+  sTempFile = sTemp & "\" & oFSO.GetTempName
+ 
+  oShell.Run cmd & " >" & sTempFile, 0, True
+
+  Set fFile = oFSO.OpenTextFile(sTempFile, ForReading, FailIfNotExist, OpenAsDefault)
+  strResult= fFile.ReadAll
+  fFile.Close
+  oFSO.DeleteFile (sTempFile)
+
+  getcommandOutput = strResult
+
+End Function 
+
+</script>
+
+<body onLoad="javascript:init(); ClearOutput(); CheckMITKerberos(); ShowDSEInfo();">
+
+<table id="header" style="" cellpadding="0" cellspacing="0" width="100%"> 
+ 
+  <tbody> 
+    <tr> 
+      <td valign="bottom" width="5px"><img src="http://www.google.com/images/cleardot.gif" height="1" width="5" /></td> 
+      <td width="1%"><a href="http://www.google.com"><img src="http://www.google.com/enterprise/images/150x55.gif" alt="Google" border="0" height="55" width="150" /></a></td> 
+      <td valign="bottom" width="5px"><img src="http://www.google.com/images/cleardot.gif" height="1" width="3" /></td> 
+      <td align="left" valign="top" width="98%">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%"> 
+                <tbody> 
+                  <tr> 
+                    <td colspan="2"><img src="http://www.google.com/images/cleardot.gif" height="18" width="2" /></td> 
+                  </tr> 
+                  <tr> 
+                    <td class="header1">GSA Windows Test Utility</td> 
+                    <td align="right"></td> 
+                  </tr> 
+                  <tr> 
+                    <td colspan="2"><img src="http://www.google.com/images/cleardot.gif" height="2" width="2" /></td> 
+                  </tr> 
+                  <tr> 
+                    <td bgcolor="#999999" colspan="2"><img src="http://www.google.com/images/cleardot.gif" height="1" width="2" /></td> 
+                  </tr> 
+                </tbody> 
+            </table>
+      </td> 
+    </tr> 
+  </tbody> 
+</table>
+
+<div width="100%"> 	
+<hr />
+
+<table width="100%">
+
+<tr>
+    <td VALIGN="top">
+    				<font class="header1">Validate GSA Kerberos Configuraton</font>			
+    				<br/>
+    				<table>                  
+        				<tr>
+                            <td><li><font size=2>FullyQualified DNS AName for GSA </font></td><td><input size=35 name="dnsname" id="dnsname" type=text value="gsa1.yourdomain.com"/></td>
+        				</tr>
+                        <tr>
+                            <td><li><font size=2>GSA username (not DOMAIN\username)</font></td><td> <input size=35  name="uname" id="uname" type=text value="gsausername"/></td>
+        				</tr>                    
+        				<tr>
+                            <td><li><font size=2>Keytab file</font></td><td> <input size=35 name="keytab" id="keytab" type=text value="c:\gsa.keytab"/></td>
+        				</tr>              
+    				</table>
+    				
+    				<center><input type="submit" onclick="javascript:ClearOutput(); RunDiag();" class="lsb" value="Run Diagnostics" name="btnG"/></center>
+                    <br />
+    				<font size="1"  >
+    					This utility validates various GSA-related kerberos infrastructure and configuration options for Secure Serving.  Please run this script on any windows system that has the
+                        <a href="http://web.mit.edu/kerberos/dist/index.html#kfw-3.2">MIT Kerberos client</a> installed.  It is assumed the user
+                        ran through the <a href="http://code.google.com/apis/searchappliance/documentation/62/secure_search/secure_search_crwlsrv.html#kerberos_authentication">GSA Kerberos Setup</a>.  This script
+                        also tests the IE version and Zone settings for the current user.
+                      
+    					<br/>
+                        Additional Kerberos Troubleshooting <a href="http://code.google.com/apis/searchappliance/kb/secure/kerberos-troubleshooting.html">link</a> on the GSA:
+                        <br/>
+    				</font>	                    			
+                                
+    </td>
+
+    <td width="40%" >			
+        <pre style="height=150px; width=100%;" id="info" name="info" />
+    </td>
+
+</tr>
+</table>
+        
+        <pre style="width=100%; height=350px; " id="dout" name="dout" />
+</body>
+
+</html>
