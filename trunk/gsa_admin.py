@@ -233,7 +233,7 @@ class gsaWebInterface:
       self.loggedIn = True
 
   def _logout(self):
-    request = urllib2.Request(self.baseURL, urllib.urlencode({'actionType' : 'logout'}))
+    request = urllib2.Request(self.baseURL + "?" + urllib.urlencode({'actionType' : 'logout'}))
     self._openurl(request)
     self.loggedIn = False
 
@@ -245,11 +245,15 @@ class gsaWebInterface:
         ("import", " Import Configuration ")]
 
     files = [("importFileName", "config.xml", gsaConfig.getXMLContents() )]
-    content_type, body = self._encode_multipart_formdata(fields, files)
+    content_type, body = self._encode_multipart_formdata(fields,files)
     headers = {'User-Agent': 'python-urllib2', 'Content-Type': content_type}
 
     self._login()
-    request = urllib2.Request(self.baseURL, body, headers)
+    request = urllib2.Request(self.baseURL + "?" +
+                              urllib.urlencode({'actionType': 'importExport',
+                                                'export': ' Import Configuration ',
+                                                'passwordIn': configPassword}),
+                              body, headers)
     log.info("Sending XML...")
     result = self._openurl(request)
     content = result.read()
@@ -273,7 +277,7 @@ class gsaWebInterface:
 
   def exportConfig(self, configPassword):
     self._login()
-    request = urllib2.Request(self.baseURL,
+    request = urllib2.Request(self.baseURL + "?" +
                               urllib.urlencode({'actionType': 'importExport',
                                                 'export': ' Export Configuration ',
                                                 'password1': configPassword,
