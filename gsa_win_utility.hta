@@ -3,14 +3,14 @@
  <head>
  
  <HTA:APPLICATION
-  APPLICATIONNAME="GSA Windows Test Utility"
+  APPLICATIONNAME="Google Search Appliance Kerberos Setup Validation"
   SCROLL="yes"
   SINGLEINSTANCE="yes"
   WINDOWSTATE="normal"
   ICON="http://www.google.com/favicon.ico"
  >
  
- <title>GSA Windows Test Utility</title>
+ <title>Google Search Appliance Kerberos Setup Validation</title>
  </head>
  
 <link href="http://www.google.com/enterprise/css/styles.css" rel="stylesheet" type="text/css" media="screen" /> 
@@ -595,6 +595,20 @@ Function getcommandOutput(cmd)
 
 End Function 
 
+Function SelectKeytab()
+'keytab
+set objfso = CreateObject("UserAccounts.CommonDialog")
+
+objfso.initialdir="c:\"
+initfso =  objfso.showopen
+
+if initfso = false then
+else
+     Set dinfo = document.getElementById("keytab")
+     dinfo.value =  objfso.filename
+end if
+End Function
+
 </script>
 
 <body onLoad="javascript:init(); ClearOutput(); CheckMITKerberos(); ShowDSEInfo();">
@@ -613,7 +627,7 @@ End Function
                     <td colspan="2"><img src="http://www.google.com/images/cleardot.gif" height="18" width="2" /></td> 
                   </tr> 
                   <tr> 
-                    <td class="header1">GSA Windows Test Utility</td> 
+                    <td class="header1">Google Search Appliance Kerberos Setup Validation</td> 
                     <td align="right"></td> 
                   </tr> 
                   <tr> 
@@ -646,7 +660,7 @@ End Function
                             <td><li><font size=2>GSA username (not DOMAIN\username)</font></td><td> <input size=35  name="uname" id="uname" type=text value="gsausername"/></td>
         				</tr>                    
         				<tr>
-                            <td><li><font size=2>Keytab file</font></td><td> <input size=35 name="keytab" id="keytab" type=text value="c:\gsa.keytab"/></td>
+                            <td><li><font size=2>Keytab file</font>&nbsp;&nbsp;<a href="#" onclick="javascript: SelectKeytab();">[select keytab]</a></td><td> <input size=35 name="keytab" id="keytab" type=text value="c:\gsa.keytab"/></td>
         				</tr>              
     				</table>
     				
