@@ -47,10 +47,6 @@
     }
  </STYLE>
 
- <script language="javascript">
-     function none() { }
-     function init() { }
-</script>
 
 
 <script language="VBScript">
@@ -85,13 +81,14 @@ Sub RunDiag()
     Set objdns = document.getElementById("dnsname")
     'CNAMELookup_Admin  objdns.value
     CheckforCNAME objdns.value
-    Set objkt = document.getElementById("keytab")
-    ParseKeytab objkt.value
+    Set objkt = document.getElementById("keytab")     
+    ParseKeytab  objkt.value
     Set objuname = document.getElementById("uname")
     CheckUserEntry  objuname.value
     VerifyPasswordInKeytab  objkt.value
     CheckSPNUniqueness AD_SPN
     VerifyIESettings objdns.value
+    'RunSecureSearch objdns.value
 End Sub
 
 Sub ShowDSEInfo()
@@ -198,7 +195,7 @@ Sub VerifyPasswordInKeytab(keytab)
         Exit Sub
     End If
     writeoutput "<font color='green'>4 Attempting to verify password in keytab</font></br>"    
-    strResult =  getktout("%comspec% /c c:\progra~1\mit\kerberos\bin\kinit.exe -V -v -k -t " & keytab & " " & KT_SPN)
+    strResult =  getktout("%comspec% /c c:\progra~1\mit\kerberos\bin\kinit.exe -V -v -k -t " & chr(34) & keytab & chr(34) & " " & KT_SPN)
     if (strResult = "Authenticated to Kerberos v5") Then
         writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> Password in Keytab Verified in AD</font></br>"
     Else
@@ -425,7 +422,7 @@ Sub ParseKeytab(keytabfile)
         exception = true
         Exit Sub
     End If
-    strResult =  getcommandOutput("%comspec% /c c:\progra~1\mit\kerberos\bin\klist.exe -k -t -e  " & keytabfile )
+    strResult =  getcommandOutput("%comspec% /c c:\progra~1\mit\kerberos\bin\klist.exe -k -t -e  " & chr(34) & keytabfile & chr(34))
     
     arrlines= split(strResult,vbcrlf)
     ' check to see if we have more than 1 key in this keytab:
@@ -465,23 +462,29 @@ Sub ParseKeytab(keytabfile)
     realm = MID(SPN_less_prefix,instr(SPN_less_prefix,"@")+1,80)
     
     If (prefix = "" OR host = "" OR realm = "") Then
-        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal in keytab is not in correct format:  Needs match case/format HTTP/gsa.yourdomain.com@YOURDOMAIN.COM </font></br>"
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal in keytab is not in correct format:  Needs match case/format HTTP/gsa.yourdomain.com@YOURDOMAIN.COM  found: " & KT_SPN & "</font></br>"
+        exception = true
         Exit Sub    
     End IF
-
-    if  prefix <> UCASE(prefix) Then
+    
+    if  (prefix <> UCASE(prefix) OR UCASE(prefix) <> "HTTP/") Then
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal-prefix in keytab is not in correct case format</font></br>"
-        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: <b>HTTP</b>/gsa.yourdomain.com@YOURDOMAIN.COM</font></br>" 
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: <b>HTTP</b>/gsa.yourdomain.com@YOURDOMAIN.COM found: " & KT_SPN & "</font></br>" 
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please rerun ktpass using the <i>exact</i> case-sensitive format shown above</font></br>"                                          
-                 
+        exception = true
+        Exit Sub                    
     elseif host <> LCASE(host) Then
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal-host in keytab is not in correct case format (Needs match case/format): HTTP/gsa.yourdomain.com@YOURDOMAIN.COM</font></br>"    
-        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: HTTP/<b>gsa.yourdomain.com</b>@YOURDOMAIN.COM</font></br>"                          
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: HTTP/<b>gsa.yourdomain.com</b>@YOURDOMAIN.COM found: " & KT_SPN & "</font></br>"                         
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please rerun ktpass using the <i>exact</i> case-sensitive format shown above</font></br>"                                                  
+        exception = true
+        Exit Sub            
     elseif realm <> UCASE(realm) Then
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal-realm in keytab is not in correct case format (Needs match case/format): HTTP/gsa.yourdomain.com@YOURDOMAIN.COM:</font></br>"        
-        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: HTTP/gsa.yourdomain.com@<b>YOURDOMAIN.COM</b></font></br>"                                  
+        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> correct format: HTTP/gsa.yourdomain.com@<b>YOURDOMAIN.COM</b> found: " & KT_SPN & "</font></br>"                                  
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please rerun ktpass using the <i>exact</i> case-sensitive format shown above</font></br>"                                          
+        exception = true
+        Exit Sub            
     else
         writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->Principal in keytab is in correct case format: HTTP/gsa.yourdomain.com@YOURDOMAIN.COM</font></br>"
     End If 
@@ -495,7 +498,7 @@ Sub VerifyIESettings(dnsentry)
         Exit Sub
     End If
     
-    writeoutput "<font color='green'>5 Attempting to verify IE Zone settings</font></br>" 
+    writeoutput "<font color='green'>6 Attempting to verify IE Zone settings</font></br>" 
     
     is_in_zone = false
     strComputer = "."
@@ -523,6 +526,7 @@ Sub VerifyIESettings(dnsentry)
     if isNull(arrSubKeys) then
         writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> GSA ANAME not found in IE Zone settings</font>"
         writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->   The DNS ANAME for the GSA must be set in a Local & Trusted IE zone for IWA.</font>"                
+        exception  = true
         exit sub
     end if
     
@@ -548,8 +552,9 @@ Sub VerifyIESettings(dnsentry)
                 if (strZone = "Local Intranet zone") Then
                     writeoutput "<font color=green>&nbsp;&nbsp;&nbsp;---> GSA ANAME Found in IE Local Intranet Zone</font>"                
                 Else
-                    writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> GSA ANAME Fount in IE [" & strZone & "] zone</font>" 
+                    writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> GSA ANAME Found in IE [" & strZone & "] zone</font>" 
                     writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->   The DNS ANAME for the GSA must be set in a Local & Trusted IE zone for IWA.</font>"                            
+                    exception = true
                 End If
                 is_in_zone = true
             End If
@@ -559,9 +564,12 @@ Sub VerifyIESettings(dnsentry)
     if (is_in_zone = false) Then
         writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> GSA ANAME not found in IE Zone settings</font>"
         writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->   The DNS ANAME for the GSA must be set in a Local & Trusted IE zone for IWA.</font>"        
+        exception = true
     End If
     
 End Sub
+
+
 
 Function getktout(strCommand)
    dim objShell, objExecObject, strOutput
@@ -611,6 +619,42 @@ End Function
 
 </script>
 
+ <script language="javascript">
+     function none() { }
+     function init() { }
+
+     function RunSecureSearch(dns) {
+     
+        url = "https://" + dns + "/search?q=*&access=s&client=default_frontend&output=xml_no_dtd&filter=0&xproxystylesheet=default_frontend&sort=date%3AD%3AL%3Ad1&entqr=0&oe=UTF-8&ie=UTF-8&ud=1&site=default_collection";     
+        writeoutput("<font color=green>7 Running Secure Search with URL: " + url + "</font>");        
+         if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
+             objxmlhttp = new XMLHttpRequest();
+         }
+         else {// code for IE6, IE5
+             objxmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+         }
+         objxmlhttp.onreadystatechange = function() {
+             if (objxmlhttp.readyState == 4 && objxmlhttp.status == 200) {
+                 //xmldoc = new ActiveXObject("Microsoft.XMLDOM");
+                 xmldoc.async = false
+                 if (xmldoc.load(objxmlhttp.responsexml)) {
+                     var doc = xmldoc.documentElement;
+                     var m = doc.getElementsByTagName("M")[0];
+                     writeoutput("<font color=red>&nbsp;&nbsp;&nbsp;---> Secure Search Succeeded: Number of search results [" + m + "</font>");
+                 }
+             }
+             else {
+                 writeoutput("<font color=red>&nbsp;&nbsp;&nbsp;---> Secure Search Failed: Response Code: [" + objxmlhttp.status + "]</font>");
+             }
+         }
+
+
+         objxmlhttp.open("GET", url, true);
+         objxmlhttp.send();
+
+     }
+</script>
+
 <body onLoad="javascript:init(); ClearOutput(); CheckMITKerberos(); ShowDSEInfo();">
 
 <table id="header" style="" cellpadding="0" cellspacing="0" width="100%"> 
@@ -654,13 +698,13 @@ End Function
     				<br/>
     				<table>                  
         				<tr>
-                            <td><li><font size=2>FullyQualified DNS AName for GSA </font></td><td><input size=35 name="dnsname" id="dnsname" type=text value="gsa1.yourdomain.com"/></td>
+                            <td><li><font size=2>FullyQualified DNS AName for GSA </font></td><td><input size=35 name="dnsname" id="dnsname" type=text value="gsa1.esodomain.com"/></td>
         				</tr>
                         <tr>
-                            <td><li><font size=2>GSA username (not DOMAIN\username)</font></td><td> <input size=35  name="uname" id="uname" type=text value="gsausername"/></td>
+                            <td><li><font size=2>GSA username (not DOMAIN\username)</font></td><td> <input size=35  name="uname" id="uname" type=text value="gsa1"/></td>
         				</tr>                    
         				<tr>
-                            <td><li><font size=2>Keytab file</font>&nbsp;&nbsp;<a href="#" onclick="javascript: SelectKeytab();">[select keytab]</a></td><td> <input size=35 name="keytab" id="keytab" type=text value="c:\gsa.keytab"/></td>
+                            <td><li><font size=2>Keytab file</font>&nbsp;&nbsp;<a href="#" onclick="javascript: SelectKeytab();">[select keytab]</a></td><td> <input size=35 name="keytab" id="keytab" type=text value="c:\gsa1.keytab"/></td>
         				</tr>              
     				</table>
     				
