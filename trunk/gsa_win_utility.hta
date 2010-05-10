@@ -1,6 +1,56 @@
- <html>
- 
+<html>
+<!--
+ Copyright 2010 Google Inc. All Rights Reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+--> 
+
+
+
+<!--
+Google Search Appliance Kerberos Setup Validation
+=================================================
+
+Description:
+   Diagnostics utility to help identify kerberos-related configuration/setup and serving issues for the Google Search Appliance (GSA).  It is assumed
+   the GSA Admin ran through the kerberos IWA setup for the GSA (i.e, created an account, created a DNS name, ran ktpass)
+    
+System Requirements:
+   32-bit Windows XP, Vista, Windows 7
+   MIT Kerberos Client (http://web.mit.edu/Kerberos/dist/index.html) 
+        installed at (c:\program files\  such that  klist exists at: c:\program files\mit\kerberos\bin\klist.exe 
+         
+Usage:
+  1. Download the gsa_win_toolkit.hta and save it to the desktop with the extension .hta.  The users account running the script
+     does not have to be an admin.  
+  2. Right click on the file, select 'Properties'.  If the security setting blocks execution, select "Unblock"
+  3. On launch, enter the following
+        a.  Fully qualified DNS A-Name of the GSA (eg gsa.yourdomain.com)
+        b.  User account for the GSA in active directory associated with the keytab.
+            (omit the domain information. eg: just gsauser not DOMAIN\gsauser or gsauser@DOMAIN)
+        c.  Select the latest keytab
+  4.  The utility will run through about 20+ individual tests comparing the keytab/DNS/AD entry, etc.
+      Output in green is a pass, in red is an error that the tool detected in the confiuration.      
+
+References:
+    http://mirror2.activexperts.com/activmonitor/windowsmanagement/scripts/desktop/internet/#LSIESZ.htm 
+    http://web.mit.edu/Kerberos/dist/index.html
+    http://technet.microsoft.com/en-us/library/ee156506.aspx
+                  
+-->
  <head>
+ 
+ <!-- register the .hta file -->
  
  <HTA:APPLICATION
   APPLICATIONNAME="Google Search Appliance Kerberos Setup Validation"
@@ -15,11 +65,10 @@
  
 <link href="http://www.google.com/enterprise/css/styles.css" rel="stylesheet" type="text/css" media="screen" /> 
 
-
  <STYLE type="text/css">
    pre  
    {
-   	background-color: #FAFAFA;
+    background-color: #FAFAFA;
     border-bottom-color: #BBB;
     border-bottom-style: solid;
     border-bottom-width: 1px;
@@ -36,7 +85,6 @@
     display: block;
     font-family: monospace;
     font-size: 12px;
-    xheight: 425px;
     padding-bottom: 11px;
     padding-left: 11px;
     padding-right: 11px;
@@ -47,12 +95,27 @@
     }
  </STYLE>
 
-
-
 <script language="VBScript">
+
+'some global variables to get set/read in the subroutines.
+' The variables prefixed by AD_ are read from active directory
+' The variables prefixed by KT_ are read from the keytab
 
 Dim UPN, AD_SPN, AD_KVNO, KT_KVNO, KT_SPN, DNS_ANAME, exception
 
+'write some data to the bottom pane
+Sub writeOutput(msg)
+     Set doutput = document.getElementById("dout")
+     doutput.innerHTML =  doutput.innerHTML & "<br/>"  & msg
+End Sub 
+
+'write some output to the right hand info pane
+Sub writeInfo(msg)
+     Set dinfo = document.getElementById("info")
+     dinfo.innerHTML =  dinfo.innerHTML & "<br/>"  & msg
+End Sub 
+
+'reset all the data between each test
 Sub ClearOutput()
      Set doutput = document.getElementById("dout")
      doutput.innerHTML = ""
@@ -66,6 +129,8 @@ Sub ClearOutput()
      exception = false
 End Sub
 
+'check to see if the MIT kerberos client is installed.
+'the default location to for install is c:\program files and it must be installed there
 Sub CheckMITKerberos()
 	Set objFSO = CreateObject("Scripting.FileSystemObject")
 	If objFSO.FileExists ("c:\program files\mit\kerberos\bin\klist.exe") then
@@ -76,21 +141,34 @@ Sub CheckMITKerberos()
     END IF
 End Sub
 
+'main script invoked when the user clicks 'Run Diagnostics'
 Sub RunDiag()
     writeoutput "<font color=black>Starting Diagnostics</font>"
     Set objdns = document.getElementById("dnsname")
-    'CNAMELookup_Admin  objdns.value
+    'first see if the dns entry is CNAME
     CheckforCNAME objdns.value
-    Set objkt = document.getElementById("keytab")     
+    Set objkt = document.getElementById("keytab")  
+    'then parse out the keytab and display results   
     ParseKeytab  objkt.value
     Set objuname = document.getElementById("uname")
+    'connecto to AD and verify the kvno, SPN, etc
     CheckUserEntry  objuname.value
+    'use kinit to verify the password
     VerifyPasswordInKeytab  objkt.value
+    'is the SPN unique
     CheckSPNUniqueness AD_SPN
+    'see if the GSA is in the correct  intranet zone
     VerifyIESettings objdns.value
+    
+    'TODO: run a secure search if all tests pass
+    'compare the klist before/after
+    'check for valid results
     'RunSecureSearch objdns.value
 End Sub
 
+
+'Invoked with the .hta is initially loaded (runs only once)
+'First connecto to AD and display the Domain/Forest version
 Sub ShowDSEInfo()
     'http://msdn.microsoft.com/en-us/library/ms684291(VS.85).aspx
 	Set objSysInfo = CreateObject("ADSystemInfo")
@@ -99,8 +177,11 @@ Sub ShowDSEInfo()
       exit sub
     end if 
     username = objSysInfo.UserName + "<br/>"
+    
+    'that error is a general connection error    
     if err.number = -2147023541 Then
-                writeOutput "<font color='red'>---> Unable to find DomainController. Aborting</font>"        		
+                writeOutput "<font color='red'>---> Unable to find DomainController. Aborting</font>"  
+                'set exception to true so we don't continue      		
                 exception = true
                 Exit Sub
     End if
@@ -138,31 +219,13 @@ Sub ShowDSEInfo()
 
 End Sub
 
-'Sub CNAMELookup_Admin(lookForCNAME)
-'    if exception = true Then
-'        Exit Sub
-'    End If
-'    strout = ""
-'	Set objRootDSE = GetObject("LDAP://RootDSE")
-'    dnsserver =  objRootDSE.Get("dnsHostName") 
-'    Set objWMIService = GetObject("winmgmts:{impersonationLevel=impersonate}!\\" & dnsserver & "\root\MicrosoftDNS")
-'    Set colItems = objWMIService.ExecQuery("Select * from MicrosoftDNS_CNAMEType Where OwnerName ='" & lookForCNAME & "'")
-'    For Each objItem in colItems
-'        strout = objItem.RecordData
-'    Next  
-'    If strout = "" Then
-'        strout = "<font color='green'>DNS Check....[passed]</font>"
-'    Else
-'        strout = "<font color='red'>DNS Check....[failed]:  " & lookForCNAME & " is a CNAME</font>"
-'    End if
-'    writeOutput strout
-'End Sub
-
+'check to see if the name provided is a CNAME or ANAME
 Sub CheckforCNAME(lookForCNAME) 
     if exception = true Then
         Exit Sub
     End If
     writeoutput "<font color='green'>1 Attempting verify DNS ANAME</font></br>"
+    'get the output for 'nslookup
     strResult =  getcommandOutput("%comspec% /c nslookup " & lookForCNAME )
  	Set doutput = document.getElementById("dout")
 	namePos = InStr(strResult ,"Aliases:")
@@ -180,16 +243,7 @@ Sub CheckforCNAME(lookForCNAME)
 	End If
 End Sub
 
-Sub writeOutput(msg)
-     Set doutput = document.getElementById("dout")
-     doutput.innerHTML =  doutput.innerHTML & "<br/>"  & msg
-End Sub 
-
-Sub writeInfo(msg)
-     Set dinfo = document.getElementById("info")
-     dinfo.innerHTML =  dinfo.innerHTML & "<br/>"  & msg
-End Sub 
-
+'run kinit against the keytab to verifiy the password there matches the one in Active directory.
 Sub VerifyPasswordInKeytab(keytab)
     if exception = true Then
         Exit Sub
@@ -204,21 +258,15 @@ Sub VerifyPasswordInKeytab(keytab)
     End If
 End Sub
 
+'Connect to AD and see if the SPN provided/derived from AD/keytab/DNS is unique.
 Sub CheckSPNUniqueness(strAD_KVNO)
     if exception = true Then
         Exit Sub
     End If
-	Dim objHash
-	Set objHash = CreateObject("Scripting.Dictionary")
-	objHash.Add "LOCKOUT", &h0010 
-	objHash.Add "NORMAL_ACCOUNT", &h0200 
-	objHash.Add "TRUSTED_FOR_DELEGATION", &h80000 
-	objHash.Add "USE_DES_KEY_ONLY", &h200000 
-	objHash.Add "DONT_REQ_PREAUTH",  &h400000
-	objHash.Add "PASSWORD_EXPIRED", &h800000 
-
+    
     writeoutput "<font color='green'>5 Attempting to verify SPN uniqueness in AD</font></br>" 
     
+    'search the  AD for servicePrincipalName=
   	str_mode = "(servicePrincipalName=" &  strAD_KVNO & ");"
 
     Set oNSP = GetObject("GC:")
@@ -239,6 +287,7 @@ Sub CheckSPNUniqueness(strAD_KVNO)
     hit_counter = 0
     Set oRecordSet = oCmd.Execute
     If oRecordSet.EOF and oRecordSet.Bof Then
+      'if the SPN wasn't even found...
       strout =  "No users found!" & "</br>"
     Else
      While Not oRecordset.Eof
@@ -249,6 +298,7 @@ Sub CheckSPNUniqueness(strAD_KVNO)
      Wend
     End If
 
+    'if we found more than one result
     if (hit_counter> 1) Then
         writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;---> SPN is not unique: " & strAD_KVNO & "--->"  & dn 
         writeoutput "<font color=red>&nbsp;&nbsp;&nbsp;--->   Delete the duplicate SPNs associated with the non-GSA accounts" 
@@ -261,6 +311,7 @@ Sub CheckSPNUniqueness(strAD_KVNO)
 
 End Sub
 
+'connecto to AD and validate some flags for the GSA's user in AD.
 Sub CheckUserEntry(username)
     if exception = true Then
         Exit Sub
@@ -269,6 +320,7 @@ Sub CheckUserEntry(username)
     
     writeoutput "<font color='green'>3 Attempting to contact Active Directory</font></br>"    
 
+    'uses the useraccountcontrol http://support.microsoft.com/kb/305144
 	Set objHash = CreateObject("Scripting.Dictionary")
 	objHash.Add "LOCKOUT", &h0010 
     objHash.Add "ACCOUNTDISABLED", &h0002
@@ -284,20 +336,24 @@ Sub CheckUserEntry(username)
     For Each oGC in oNSP
       strGCPath = oGC.ADsPath
     Next
+    
     Set oConnection = CreateObject("ADODB.Connection")
     Set oCmd = CReateObject("ADODB.Command")
     oConnection.Provider = "ADsDSOObject"
     oConnection.Open "ADs Provider"
+    
     Set oCmd.ActiveConnection = oConnection
     oCmd.Properties("Page Size") = 1000
     strADOQuery = "<" + strGCPath + ">;" & str_mode  & "dnsHostName,distinguishedName,servicePrincipalName,objectClass,userprincipalName,msDS-KeyVersionNumber,userAccountControl, samAccountName;subtree"
     oCmd.CommandText = strADOQuery
+    
     Set oRecordSet = oCmd.Execute
     If oRecordSet.EOF and oRecordSet.Bof Then
       writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Username/samAccountName [" & username & "] not found: </font></br>"
       writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Please verify the username registered to the GSA</font></br>"
       writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->(enter the username without the domain eg:  user1  and not YOURDOMAIN\user1 or user1@DOMAIN)</font></br>"     
     Else
+    'for each user found
      While Not oRecordset.Eof
        Dim dn 
        dn = oRecordset.Fields("distinguishedName") 
@@ -305,6 +361,7 @@ Sub CheckUserEntry(username)
        vObjClass = oRecordset.Fields("objectClass")
        strClass = vObjClass( UBound(vObjClass) )
        strout = strout & " Class: " & strClass & "</br>"
+       'if the account is fo type computer, we can't proceed.
        If UCase(strClass) = "COMPUTER" Then
           writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Account is not a User account: " & oRecordset.Fields("dnsHostName") & "; it is a COMPUTER account</font></br>"
           writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Please delete this account in AD and recreate as a User account (not computer account)</font></br>"            
@@ -318,6 +375,7 @@ Sub CheckUserEntry(username)
           writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD UserPrincipalName: " & AD_UPN & "</font><br/>"
           writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD KVNO: " & AD_KVNO & "</font><br/>"
                     
+          'do the KVNO numbers match?
           If clng(AD_KVNO) = clng(KT_KVNO) Then
             writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> KVNOs in AD and keytab matched</font><br/>"                  
           Else
@@ -329,7 +387,8 @@ Sub CheckUserEntry(username)
           Set objUser = GetObject("LDAP://" + dn)
           intUAC = objUser.Get("userAccountControl")
 
-
+          'now compare the flags in the userAccountcontrol
+          'eg: http://gallery.technet.microsoft.com/ScriptCenter/en-us/67244a3c-3615-46d5-9c6f-92df8823b7bf
           For Each Key In objHash.Keys
             If objHash(Key) And intUAC  Then 
                 Select Case Key 
@@ -364,15 +423,20 @@ Sub CheckUserEntry(username)
 	
        End If
 
+       'now compare the serviceprincipal name in AD
        On Error Resume Next
        vSPNs = oRecordset.Fields("servicePrincipalName")
        ad_kt_spn_matched = false
+       'the Principal in the keytab has the REALM HTTP/gsa.yourdomain.com@YOURDOMAIN.COM
+       'and the SPN in AD is just HTTP/gsa.yourdomain.com...so we strip off everything after the @ 
        kt_spn_without_realm = Mid(KT_SPN,1,Instr(KT_SPN,"@")-1)
             
 
        For Each vName in vSPNs
        		 writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD SPN Found: " & vName  & "</font></br>"
              writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> Comparing SPN from AD against keytab...</font></br>"
+             'compare the spn in AD and the principal in the keytab...
+             'there can be multiple SPN for the account...we just need it to match the keytab...
              If vName = kt_spn_without_realm Then
                 AD_SPN = vName
                 ad_kt_spn_matched = true
@@ -381,6 +445,7 @@ Sub CheckUserEntry(username)
        
        if (ad_kt_spn_matched = true) Then
          writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->  SPN/Principal in Keytab and AD Matched: " & kt_spn_without_realm & "</font></br>"
+         'now does the SPN  match the DNS A-name
          if kt_spn_without_realm = ("HTTP/" & Lcase(DNS_ANAME)) Then
               writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> DNS ANAME matches the host portion of the SPN</font></br>"
          Else
@@ -395,6 +460,8 @@ Sub CheckUserEntry(username)
          writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> Check if  [" & username & "] is actually the user entered as the -mapuser parameter wil running ktpass</font></br>"                
        End If
 
+        ' We also know that the UPN in AD must match the Principal in the keytab (this time the @ symbol is needed.)
+        'eg a UPN after keytab generation looks like: HTTP/gsa.yourdomain.com@YOURDOMAIN.COM
        if (AD_UPN = KT_SPN) Then
         writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> Principal in Keytab matches UPN in AD: " & AD_UPN & "</font></br>"
        Else
@@ -410,6 +477,7 @@ Sub CheckUserEntry(username)
     oConnection.Close
 End Sub
 
+'parse out the  keytab
 Sub ParseKeytab(keytabfile)
     if exception = true Then
         Exit Sub
@@ -432,6 +500,7 @@ Sub ParseKeytab(keytabfile)
         exception = true
         Exit Sub        
     End If
+    'now scrape out the info we need from the klist output (yeah, i know)
     arrlines(3) = Trim(arrlines(3))
     arrentries =  split(arrlines(3)," ")
     KT_KVNO = ""
@@ -455,11 +524,13 @@ Sub ParseKeytab(keytabfile)
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Please run ktpass again and specify the encryption type</font></br>"            
     end if 
     'now parse out the KT_SPN to see if its in correct case: HTTP/gsa.yourdomain.com@YOURDOMAIN.COM 
-    'the parsing logic below isn't that good...
+    'the parsing logic below is so-so
     prefix = Mid(KT_SPN,1,5)
     SPN_less_prefix = MID(KT_SPN,6,60)
     host = Mid(SPN_less_prefix,1,instr(SPN_less_prefix,"@")-1)    
     realm = MID(SPN_less_prefix,instr(SPN_less_prefix,"@")+1,80)
+    
+    'compare the prefix/service, the host and realm.
     
     If (prefix = "" OR host = "" OR realm = "") Then
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Principal in keytab is not in correct format:  Needs match case/format HTTP/gsa.yourdomain.com@YOURDOMAIN.COM  found: " & KT_SPN & "</font></br>"
@@ -492,8 +563,8 @@ Sub ParseKeytab(keytabfile)
     
 End Sub
 
+'connect to the local registry, find ou the IE version and see if the GSA is registered in the 'local intranet zone'
 Sub VerifyIESettings(dnsentry)
-   'http://mirror2.activexperts.com/activmonitor/windowsmanagement/scripts/desktop/internet/#LSIESZ.htm
     if exception = true Then
         Exit Sub
     End If
@@ -530,6 +601,7 @@ Sub VerifyIESettings(dnsentry)
         exit sub
     end if
     
+    'parse out the registry keys.
     For Each subkey In arrSubKeys
         strDomains = strKeyPath & "\" & subkey
         objReg.EnumKey HKEY_CURRENT_USER, strDomains, arrDomainKeys
@@ -570,7 +642,8 @@ Sub VerifyIESettings(dnsentry)
 End Sub
 
 
-
+'these two scripts invokes a shell using two different mechanisms: shell.exec and shell.run.
+'for some reason, the keytab/klist commands don't complete fully using the shell.run so until i figure why...
 Function getktout(strCommand)
    dim objShell, objExecObject, strOutput
    Set objShell = CreateObject("WScript.Shell")
@@ -581,41 +654,22 @@ Function getktout(strCommand)
    loop
 End Function
 
+'launches a shell, pipes the output to a file, reads that file then deletes it.
 Function getcommandOutput(cmd)
-
   Const OpenAsDefault = -2
   Const FailIfNotExist = 0
   Const ForReading = 1
-
   Set oShell = CreateObject("WScript.Shell")
   Set oFSO = CreateObject("Scripting.FileSystemObject")
   sTemp = oShell.ExpandEnvironmentStrings("%TEMP%")
-  sTempFile = sTemp & "\" & oFSO.GetTempName
- 
+  sTempFile = sTemp & "\" & oFSO.GetTempName 
   oShell.Run cmd & " >" & sTempFile, 0, True
-
   Set fFile = oFSO.OpenTextFile(sTempFile, ForReading, FailIfNotExist, OpenAsDefault)
   strResult= fFile.ReadAll
   fFile.Close
   oFSO.DeleteFile (sTempFile)
-
   getcommandOutput = strResult
-
 End Function 
-
-Function SelectKeytab()
-'keytab
-set objfso = CreateObject("UserAccounts.CommonDialog")
-
-objfso.initialdir="c:\"
-initfso =  objfso.showopen
-
-if initfso = false then
-else
-     Set dinfo = document.getElementById("keytab")
-     dinfo.value =  objfso.filename
-end if
-End Function
 
 </script>
 
@@ -623,10 +677,15 @@ End Function
      function none() { }
      function init() { }
 
+     //not implemented yet:
+     //in a later release, this routine will:
+     //1.get a list of the existing kerberos ticket on the system
+     //2.run a secure search using the dns aname
+     //3.parse out the returning XML results (if any)
+     //4.compare the  tickets before/after the search and display the results.
      function RunSecureSearch(dns) {
-     
-        url = "https://" + dns + "/search?q=*&access=s&client=default_frontend&output=xml_no_dtd&filter=0&xproxystylesheet=default_frontend&sort=date%3AD%3AL%3Ad1&entqr=0&oe=UTF-8&ie=UTF-8&ud=1&site=default_collection";     
-        writeoutput("<font color=green>7 Running Secure Search with URL: " + url + "</font>");        
+         url = "https://" + dns + "/search?q=*&access=s&client=default_frontend&output=xml_no_dtd&filter=0&xproxystylesheet=default_frontend&sort=date%3AD%3AL%3Ad1&entqr=0&oe=UTF-8&ie=UTF-8&ud=1&site=default_collection";
+         writeoutput("<font color=green>7 Running Secure Search with URL: " + url + "</font>");
          if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
              objxmlhttp = new XMLHttpRequest();
          }
@@ -647,11 +706,8 @@ End Function
                  writeoutput("<font color=red>&nbsp;&nbsp;&nbsp;---> Secure Search Failed: Response Code: [" + objxmlhttp.status + "]</font>");
              }
          }
-
-
          objxmlhttp.open("GET", url, true);
          objxmlhttp.send();
-
      }
 </script>
 
@@ -689,9 +745,7 @@ End Function
 
 <div width="100%"> 	
 <hr />
-
 <table width="100%">
-
 <tr>
     <td VALIGN="top">
     				<font class="header1">Validate GSA Kerberos Configuraton</font>			
@@ -704,7 +758,7 @@ End Function
                             <td><li><font size=2>GSA username (not DOMAIN\username)</font></td><td> <input size=35  name="uname" id="uname" type=text value="gsa1"/></td>
         				</tr>                    
         				<tr>
-                            <td><li><font size=2>Keytab file</font>&nbsp;&nbsp;<a href="#" onclick="javascript: SelectKeytab();">[select keytab]</a></td><td> <input size=35 name="keytab" id="keytab" type=text value="c:\gsa1.keytab"/></td>
+                            <td><li><font size=2>Keytab file</font>&nbsp;&nbsp;</td><td> <input size=35 type="file" name="keytab" id="keytab" type=text value="c:\gsa1.keytab"/></td>
         				</tr>              
     				</table>
     				
@@ -714,22 +768,17 @@ End Function
     					This utility validates various GSA-related kerberos infrastructure and configuration options for Secure Serving.  Please run this script on any windows system that has the
                         <a href="http://web.mit.edu/kerberos/dist/index.html#kfw-3.2">MIT Kerberos client</a> installed.  It is assumed the user
                         ran through the <a href="http://code.google.com/apis/searchappliance/documentation/62/secure_search/secure_search_crwlsrv.html#kerberos_authentication">GSA Kerberos Setup</a>.  This script
-                        also tests the IE version and Zone settings for the current user.
-                      
+                        also tests the IE version and Zone settings for the current user.                     
     					<br/>
                         Additional Kerberos Troubleshooting <a href="http://code.google.com/apis/searchappliance/kb/secure/kerberos-troubleshooting.html">link</a> on the GSA:
                         <br/>
-    				</font>	                    			
-                                
+    				</font>	                    			                                
     </td>
-
     <td width="40%" >			
         <pre style="height=150px; width=100%;" id="info" name="info" />
     </td>
-
 </tr>
-</table>
-        
+</table>        
         <pre style="width=100%; height=350px; " id="dout" name="dout" />
 </body>
 
