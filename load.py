@@ -31,6 +31,8 @@
 #   Additional options are:
 #     --port            Port on the webserver (default is port 80)
 #     --threads         Number of concurrent queries (default is 3)
+#     --suggest         Enable query suggestions
+#     --cluster         Enable result clustering
 #
 # Sample output from a successful query:
 #   Fri Aug 15 13:19:43 2008: Thread-3: success: 0.3 secs query: foo
