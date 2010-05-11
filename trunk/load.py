@@ -40,6 +40,14 @@
 # TODO(jlowry):
 #  * Would be good to send a fixed qps to a GSA using Python's
 #    built-in scheduler module.
+#TODO(lchabardes):
+#  *Implement a benchmark feature to automaticly establish max qps for an appliance
+#  *Simplify query input: directly from search report, and/or generate query 
+#   set from clustering
+#  *Investigate feasibility of secure search load testing
+#  *Make the repartition of suggest/clustering configurable
+#  *Make the number of suggest random
+#  *Enable Chart output using Google Chart Tools
 
 import getopt
 import httplib
@@ -51,7 +59,7 @@ import sys
 import thread
 import threading
 import time
-
+import urlparse
 
 class Results(object):
   """Class for holding results of load tests."""
@@ -92,12 +100,14 @@ class Results(object):
 
 class Client(threading.Thread):
 
-  def __init__(self, host, port, queries, res):
+  def __init__(self, host, port, queries, res, enable_cluster, enable_suggest):
     threading.Thread.__init__(self)
     self.host = host
     self.port = port
     self.res = res
     self.queries = queries
+    self.enable_cluster = enable_cluster
+    self.enable_suggest = enable_suggest
 
   def run(self):
     while True:
@@ -106,61 +116,92 @@ class Client(threading.Thread):
       except Queue.Empty:
         break
       else:
-        self.FetchContent(self.host, self.port, q.strip())
+        query_parsed = urlparse.urlparse(q.strip())
+  query_parsed_clean = query_parsed[4]
+  #Cleaning up query input to prevent invalid requests.
+  if query_parsed_clean[0] == "&":
+    query_parsed_clean = query_parsed_clean[1:-1]
+  try:
+    parameters = dict([param.split('=') for param in query_parsed_clean.split('&')])
+  except Exception, e:
+    print e
+    print query_parsed
+    print parameters
+    raise
+  if 'q' in parameters: 
+          self.FetchContent(self.host, self.port, q.strip(), parameters)
 
-  def FetchContent(self, host, port, q):
+  def FetchContent(self, host, port, q, parameters):
     start_time = time.ctime(time.time())
-    if q.find("/search?") == 0:
-      query = q
+    test_requests = []
+    #For each queries we get from the queue, making one suggest query and one clustering req:
+    if q.find("/search?") == 0 and q.find("coutput=json") != 0:
+      test_requests.append(q)
     else:
-      query = ("/search?q=%s&output=xml_no_dtd&client=default_frontend&"
-               "proxystylesheet=default_frontend&site=default_collection" % (q))
-    try:
-      timer_start = time.time()
-      conn = httplib.HTTPConnection(host, port)
-      conn.request("GET", query)
-      res = conn.getresponse()
-      content = res.read()
-      conn.close()
-      if res.status != 200:
-        content_lines = content.splitlines()
-        exc_value = str(res.status)
-        exc_value += " "
-        exc_value += content_lines[-1]
-        raise httplib.HTTPException(exc_value)
-      timer_end = time.time()
-      exec_time = timer_end - timer_start
-      logging.info(("%s: %s: success: %.1f secs query: "
-                    "%s") % (start_time, self.getName(), exec_time, q))
-      self.res.good_result_times.append(exec_time)
-    except httplib.HTTPException, value:
-      logging.info(("%s: %s: error: %s query: "
-                    "%s") % (start_time, self.getName(), value, q))
-      self.res.error_result_count += 1
-    except socket.error, msg:
-      logging.info("%s: %s: %s query: %s" % (start_time, self.getName(), msg, q))
-      self.res.error_result_count += 1
-    except:
-      the_type, value, tb = sys.exc_info()
-      logging.info("%s: %s: exception: %s %s query: %s" % (start_time, self.getName(),
-                                                           the_type, value, q))
-      self.res.error_result_count += 1
+      test_requests.append("/search?q=%s&output=xml_no_dtd&client=default_frontend&roxystylesheet=default_frontend&site=default_collection" % (q))
+    if enable_cluster == True: 
+      token = parameters.get('q')
+      frontend = parameters.get('client', "default_frontend")
+      collection = parameters.get('site', "default_collection")
+      test_requests.append("/cluster?coutput=json&q=%s&site=%s&client=%s" %(token, collection, frontend))
+    if enable_suggest == True:
+      token = parameters.get('q')
+      frontend = parameters.get('client', "default_frontend")
+      collection = parameters.get('site', "default_collection")
+      test_requests.append("/suggest?q=%s&max_matches=10&use_similar&access=p&format=rich" %(token[0:2]))
+    for req in test_requests:
+      try:
+        timer_start = time.time()
+        conn = httplib.HTTPConnection(host, port)
+        if req.find("/suggest?") == 0 or req.find("/cluster?") == 0:
+          conn.request("POST", req)
+        else:
+          conn.request("GET", req)
+        res = conn.getresponse()
+        content = res.read()
+        conn.close()
+        if res.status != 200:
+          content_lines = content.splitlines()
+          exc_value = str(res.status)
+          exc_value += " "
+          exc_value += content_lines[-1]
+          raise httplib.HTTPException(exc_value)
+        timer_end = time.time()
+        exec_time = timer_end - timer_start
+        logging.info(("%s: %s: success: %.1f secs query: "
+                      "%s") % (start_time, self.getName(), exec_time, req))
+        if req.find("/suggest?") != 0 and req.find("/cluster?") !=0:
+          self.res.good_result_times.append(exec_time)
+      except httplib.HTTPException, value:
+        logging.info(("%s: %s: error: %s query: "
+                      "%s") % (start_time, self.getName(), value, req))
+        self.res.error_result_count += 1
+      except socket.error, msg:
+        logging.info("%s: %s: %s query: %s" % (start_time, self.getName(), msg, req))
+        self.res.error_result_count += 1
+      except:
+        the_type, value, tb = sys.exc_info()
+        logging.info("%s: %s: exception: %s %s query: %s" % (start_time, self.getName(),
+                                                             the_type, value, req))
+        self.res.error_result_count += 1
 
 
 def usage():
   return ("load.py --queries=<queries-filename> --host=<gsa-hostname> "
-          "[--threads=<num-threads>] [--port=<gsa-port>]")
+          "[--threads=<num-threads>] [--port=<gsa-port>] [--suggest] [--cluster]")
 
 
 if __name__ == "__main__":
 
   num_threads = 3
   port = 80
+  enable_suggest = False
+  enable_cluster = False
   host = ""
   queries_filename = ""
   try:
     opts, args = getopt.getopt(sys.argv[1:], None,
-                               ["host=", "port=", "threads=", "queries="])
+                               ["host=", "port=", "threads=", "queries=", "cluster", "suggest"])
   except getopt.GetoptError:
     print usage()
     sys.exit(1)
@@ -173,6 +214,10 @@ if __name__ == "__main__":
       num_threads = int(arg)
     if opt == "--port":
       port = arg
+    if opt == "--cluster":
+      enable_cluster = True
+    if opt == "--suggest":
+      enable_suggest = True
 
   if not host or not queries_filename:
     print usage()
@@ -190,7 +235,7 @@ if __name__ == "__main__":
   res = Results()
   thread_list = []
   while num_threads > 0:
-    c = Client(host, port, queries, res)
+    c = Client(host, port, queries, res, enable_cluster, enable_suggest)
     thread_list.append(c)
     c.start()
     num_threads -= 1
