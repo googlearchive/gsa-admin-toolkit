@@ -42,6 +42,8 @@
 # TODO(jlowry):
 #  * Would be good to send a fixed qps to a GSA using Python's
 #    built-in scheduler module.
+#  * Implement functionality of Mohit's query repeater script that takes search logs
+#    from the GSA and replays the queries
 #TODO(lchabardes):
 #  *Implement a benchmark feature to automaticly establish max qps for an appliance
 #  *Simplify query input: directly from search report, and/or generate query 
