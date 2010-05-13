@@ -16,6 +16,10 @@
 #
 
 
+# TODO(jlowry)
+# Make cached_copy_checker work for feeds as well as crawled docs.
+
+
 '''
 NOTE: This script will not work out of the box. Some parameters need
 to be set below and the appliance needs to be configured to crawl a
