@@ -30,8 +30,20 @@ for the sitemap and a delay (in seconds) after which it should download and
 process the xml file.  The sitemap connector is provided to understand how
 to potentially trigger the 'traversal' of a content system and how to feed
 data to the GSA.
-sample xml sitemap:  http://www.domain.com/sitemap.xml
 
+Sample Setup
+1. Install Python, cherrypy.
+2. Start the connector:   python connectormanager.py --debug
+    (assuming you're running this on host: myconnector.mydomain.com
+3. On the GSA Admin console, create a new connector-manager and set the host
+   to http://myconnector.mydomain.com:38080   (note, no '/' at the end)
+4. Create a connector instance
+5. Configure the connector instance to use
+   sample URL:  http://www.domain.com/sitemap.xml
+   Delay: 60  (for example)
+6. Every 60 seconds the connector will download the sitemap and feed it into the
+   GSA
+   
 This script can be used as a template to write arbitrary simple connectors.
 
 The connectormanger does not manage an individual connectors checkpointing or
