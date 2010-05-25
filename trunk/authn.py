@@ -584,10 +584,10 @@ class AuthN(object):
                 'xmlns="urn:oasis:names:tc:SAML:2.0:assertion" '
                 'ID="%s" Version="2.0" InResponseTo="%s" IssueInstant="%s"> '
                 '<Issuer>%s</Issuer>'
-		        '<samlp:Status>'
-		        '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
+		'<samlp:Status>'
+		'<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
                 '</samlp:Status>'
-		        '<samlp:Response ID="%s" Version="2.0" IssueInstant="%s">'
+		'<samlp:Response ID="%s" Version="2.0" IssueInstant="%s">'
                 '<samlp:Status>'
                 '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>' 
                 '</samlp:Status>'
@@ -598,7 +598,7 @@ class AuthN(object):
                 '<SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">'
                 '<SubjectConfirmationData InResponseTo="%s" Recipient="%s" NotOnOrAfter="%s"/>'
                 '</SubjectConfirmation>'
-		        '</Subject>'
+		'</Subject>'
                 '<Conditions NotBefore="%s" NotOnOrAfter="%s">'
                 '<AudienceRestriction>'
                 '<Audience>%s</Audience>'
@@ -620,8 +620,8 @@ class AuthN(object):
                                           rand_id_assert, now,
                                           self.saml_issuer, username, 
                                           login_req_id,  current_recipient, five_sec_from_now,
-			    		                  now, five_sec_from_now, saml_oissuer,
- 					                      now, rand_id_assert))
+			    		  now, five_sec_from_now, saml_oissuer,
+ 					  now, rand_id_assert))
 
     if self.debug_flag:
       xmldoc = xml.dom.minidom.parseString(response)
