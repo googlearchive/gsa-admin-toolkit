@@ -199,6 +199,7 @@ from urlparse import urlparse
 import xml.dom.minidom
 import zlib
 import cherrypy
+from xml.sax.saxutils import escape
 
 class AuthN(object):
 
@@ -243,6 +244,8 @@ class AuthN(object):
 
     # stores the authenticated sessions
     self.authnsessions = {}
+    self.recipients = {}
+    self.login_request_ids = {}
     self.saml_issuer = saml_issuer
     self.passwd_db = {}
     for user in self.user_db:
@@ -348,7 +351,8 @@ class AuthN(object):
 
   # Collects the SAMLRequest, RelayState and prompts uses BASIC to prompt the
   # user.
-  def login(self, RelayState=None, SAMLRequest = None):
+  def login(self, RelayState=None, SAMLRequest = None, SigAlg = None, 
+            Signature = None):
     # Ask the user for username/password
     login = self.authenticate()
 
@@ -359,17 +363,39 @@ class AuthN(object):
     # Stash the artifact associated with the user it in a table so that 
     # when asked who an artifact belongs to, we know who the user is.
     self.authnsessions[rand_art] = (login)
+
+    decoded_saml = decode_base64_and_inflate(SAMLRequest)
+    xmldoc = xml.dom.minidom.parseString(decoded_saml)
+
+    if self.debug_flag:
+      log('Parsed SAMLRequest: %s' %xmldoc.toprettyxml())
+
+    samlpnode = xmldoc.getElementsByTagName('samlp:AuthnRequest')
+    req_id = rand_art
+    for node in samlpnode:
+      if node.nodeName == 'samlp:AuthnRequest':
+        if samlpnode[0].hasAttribute('ID'):
+          req_id = samlpnode[0].attributes \
+                          ['ID'].value
+    self.login_request_ids[rand_art] = req_id 
+         
+
     # We can either use the Referer header or (per SAML spec), decode/decompress
     # the SAMLRequest to figure out 
     # the AssertionConsumerServiceURL or just statically redirect
     if self.consumer_mech == 'static':
       static_redirect = 'https://gsa.yourdomain.com/SamlArtifactConsumer'
+      self.recipients[rand_art] = static_redirect
       if self.debug_flag:
         log('Attempting to use STATIC  Header with Artifact [%s]'%(rand_art))
       cherrypy.response.status = 302
       # Redirect back to the GSA and add on the artifact,relaystate
-      location = ('%s?SAMLart=%s&RelayState=%s'
-                  % (static_redirect, rand_art, urllib.quote(RelayState)))
+      if (RelayState is None):
+        location = ('%s?SAMLart=%s'
+                    % (static_redirect, rand_art))          
+      else:
+        location = ('%s?SAMLart=%s&RelayState=%s'
+                    % (static_redirect, rand_art, urllib.quote(RelayState)))
       cherrypy.response.headers['location'] = location
       if self.debug_flag:
         log( 'Redirecting to: %s' %(location))
@@ -418,13 +444,18 @@ class AuthN(object):
             return ('<html><title>Error</title><body>'
                     'No AssertionConsumerServiceURL provided in'
                     ' SAMLRequest</body></html>')
-          log('AssertionConsumerServiceURL: %s' %(acs_url))
+          if self.debug_flag:
+            log('login Parsed AssertionConsumerServiceURL: %s' %(acs_url))
 
       # We got a consumerservice URL, now redirect the browser back
       #to the GSA using that URL
       if acs_url is not None:
         cherrypy.response.status = 302
-        location = ("%s?SAMLart=%s&RelayState=%s") % (acs_url,
+        self.recipients[rand_art] = acs_url
+        if (RelayState is None):
+          location = ("%s?SAMLart=%s") % (acs_url,rand_art)
+        else:
+          location = ("%s?SAMLart=%s&RelayState=%s")%(acs_url,
                                                       rand_art,
                                                       urllib.quote(RelayState))
         cherrypy.response.headers["location"] = location
@@ -438,11 +469,16 @@ class AuthN(object):
       parsed_URL = urlparse(str_referer)
       hostname = parsed_URL.hostname
       cherrypy.response.status = 302
+      self.recipients[rand_art] = 'https://%s/SamlArtifactConsumer' % hostname
       # redirect back to the GSA and add on the artifact,relaystate
       # redirect always to http://gsa.yourdomain.com/SamlArtifactConsumer
       # if https is required, modify the line below to https
-      location = ('https://%s/SamlArtifactConsumer?SAMLart=%s&RelayState=%s'
-                  % (hostname, rand_art, urllib.quote(RelayState)))
+      if (RelayState is None):
+        location = ('https://%s/SamlArtifactConsumer?SAMLart=%s'
+                    % (hostname, rand_art))
+      else:
+        location = ('https://%s/SamlArtifactConsumer?SAMLart=%s&RelayState=%s'
+                    % (hostname, rand_art, urllib.quote(RelayState)))
       cherrypy.response.headers['location'] = location
       if self.debug_flag:
         log('Redirecting to: %s' %(location))
@@ -463,10 +499,6 @@ class AuthN(object):
     # Get the timestamp of now in the SAML format
     now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     authn_request = cherrypy.request.body.read()
-
-    if self.debug_flag:
-      log('-----------  ARTIFACT BEGIN  -----------')
-      log('artifact_service request: %s' %(authn_request))
 
       # the SAML Request looks something like this:
       #        request = ("<soapenv:Envelope xmlns:soapenv=
@@ -492,74 +524,111 @@ class AuthN(object):
 
       # Now parse out the SAML ID number, artifact
 
-      xmldoc = xml.dom.minidom.parseString(authn_request)
-      samlp = xmldoc.getElementsByTagName('samlp:ArtifactResolve')
+    xmldoc = xml.dom.minidom.parseString(authn_request)
+    samlp = xmldoc.getElementsByTagName('samlp:ArtifactResolve')
 
-      saml_id = None
-      saml_artifact = None
+    if self.debug_flag:
+      log('-----------  ARTIFACT BEGIN  -----------')
+      log('artifact_service request: %s' %(xmldoc.toprettyxml()))
 
-      for node in samlp:
-        if (node.nodeName == 'samlp:ArtifactResolve'):
-          saml_id = samlp[0].attributes["ID"].value
-          samlartifact = node.getElementsByTagName('samlp:Artifact')
-          for n_issuer in samlartifact:
-            cnode = n_issuer.childNodes[0]
-            if cnode.nodeType == node.TEXT_NODE:
-              saml_artifact = cnode.nodeValue
+    saml_id = None
+    saml_artifact = None
+    saml_oissuer = None
 
-      if self.debug_flag:
-        log('artifact_service Artifact %s' %(saml_artifact))
-        log('artifact_service ID %s' %(saml_id))
+    for node in samlp:
+      if (node.nodeName == 'samlp:ArtifactResolve'):
+        saml_id = samlp[0].attributes["ID"].value
+        samlartifact = node.getElementsByTagName('samlp:Artifact')
+        for n_issuer in samlartifact:
+          cnode = n_issuer.childNodes[0]
+          if cnode.nodeType == node.TEXT_NODE:
+            saml_artifact = cnode.nodeValue
+        samliss = node.getElementsByTagName('saml:Issuer')
+        for n_issuer in samliss:
+          cnode = n_issuer.childNodes[0]
+          if cnode.nodeType == node.TEXT_NODE:
+            saml_oissuer = cnode.nodeValue
 
       # See if the artifiact corresponds with a user that was authenticated
-      username = self.authnsessions[saml_artifact]
+    username = self.authnsessions[saml_artifact]
 
-      # If there is no username assoicated with the artifact, we should
-      # show a SAML error response...this is a TODO, for now just show a message
-      if (username is None):
-        log('ERROR: No user assoicated with: %s' % saml_artifact)
-        return 'ERROR: No user assoicated with: %s' % saml_artifact
-    
-      # Now clear out the table
-      self.authnsessions[saml_artifact] = None
-      
-      rand_id = self.getrandom_samlID()
-      rand_id_assert = self.getrandom_samlID()
+    # If there is no username assoicated with the artifact, we should
+    # show a SAML error response...this is a TODO, for now just show a message
+    if (username is None):
+      log('ERROR: No user assoicated with: %s' % saml_artifact)
+      return 'ERROR: No user assoicated with: %s' % saml_artifact
+   
+    current_recipient = self.recipients[saml_artifact] 
+    login_req_id = self.login_request_ids[saml_artifact]
+    # Now clear out the table
+    self.authnsessions[saml_artifact] = None
+    self.recipients[saml_artifact] = None 
+    self.login_request_ids[saml_artifact] = None 
+    rand_id = self.getrandom_samlID()
+    rand_id_assert = self.getrandom_samlID()
 
-      # Writeup the ArtifactResponse and set the username back
-      #along with the ID sent to it (i.e, the saml_id).
-      response = ('<SOAP-ENV:Envelope '
-                  'xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">'
-                  '<SOAP-ENV:Body><samlp:ArtifactResponse '
-                  'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
-                  'xmlns="urn:oasis:names:tc:SAML:2.0:assertion" '
-                  'ID="%s" Version="2.0" '
-                  'InResponseTo="%s" IssueInstant="%s">'
-                  '<Issuer>%s</Issuer><samlp:Status><samlp:StatusCode '
-                  'Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
-                  '</samlp:Status><samlp:Response ID="%s" '
-                  'Version="2.0" IssueInstant="%s">'
-                  '<samlp:Status><samlp:StatusCode '
-                  'Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
-                  '</samlp:Status><Assertion Version="2.0" ID="%s" '
-                  'IssueInstant="%s"><Issuer>%s</Issuer><Subject>'
-                  '<NameID>%s</NameID></Subject><AuthnStatement '
-                  'AuthnInstant="%s"><AuthnContext><AuthnContextClassRef> '
-                  'urn:oasis:names:tc:SAML:2.0:ac:classes:'
-                  'PasswordProtectedTransport '
-                  '</AuthnContextClassRef></AuthnContext></AuthnStatement>'
-                  '</Assertion></samlp:Response></samlp:ArtifactResponse>'
-                  '</SOAP-ENV:Body>'
-                  '</SOAP-ENV:Envelope>' % (rand_id, saml_id,now,
-                                            self.saml_issuer, saml_id,now,
-                                            rand_id_assert, now,
-                                            self.saml_issuer, username, now))
+    if self.debug_flag:
+      log('artifact_service Artifact %s' %(saml_artifact))
+      log('artifact_service ID %s' %(saml_id))
+      log('artifact_service recipient %s' %(current_recipient))
+      log('artifact_service login_req_id %s' %(login_req_id))
 
-      if self.debug_flag:
-        log('artifact_service response %s' %(response))
-        log('-----------  ARTIFACT END   -----------')
+    five_sec_from_now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+5) )
+    # Writeup the ArtifactResponse and set the username back
+    #along with the ID sent to it (i.e, the saml_id).
+    response = ('<SOAP-ENV:Envelope '
+                'xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">'
+                '<SOAP-ENV:Body>'
+      	        '<samlp:ArtifactResponse '
+                'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
+                'xmlns="urn:oasis:names:tc:SAML:2.0:assertion" '
+                'ID="%s" Version="2.0" InResponseTo="%s" IssueInstant="%s"> '
+                '<Issuer>%s</Issuer>'
+		        '<samlp:Status>'
+		        '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
+                '</samlp:Status>'
+		        '<samlp:Response ID="%s" Version="2.0" IssueInstant="%s">'
+                '<samlp:Status>'
+                '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>' 
+                '</samlp:Status>'
+                '<Assertion Version="2.0" ID="%s" IssueInstant="%s">'
+                '<Issuer>%s</Issuer>'
+                '<Subject>'
+                '<NameID>%s</NameID>'
+                '<SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">'
+                '<SubjectConfirmationData InResponseTo="%s" Recipient="%s" NotOnOrAfter="%s"/>'
+                '</SubjectConfirmation>'
+		        '</Subject>'
+                '<Conditions NotBefore="%s" NotOnOrAfter="%s">'
+                '<AudienceRestriction>'
+                '<Audience>%s</Audience>'
+                '</AudienceRestriction>'
+                '</Conditions>'
+                '<AuthnStatement AuthnInstant="%s" SessionIndex="%s">'
+                '<AuthnContext>'
+                '<AuthnContextClassRef>'
+                'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'
+                '</AuthnContextClassRef>'
+                '</AuthnContext>'
+                '</AuthnStatement>'
+                '</Assertion>'
+                '</samlp:Response>'
+                '</samlp:ArtifactResponse>'
+                '</SOAP-ENV:Body>'
+                '</SOAP-ENV:Envelope>' % (rand_id, saml_id,now,
+                                          self.saml_issuer, saml_id,now,
+                                          rand_id_assert, now,
+                                          self.saml_issuer, username, 
+                                          login_req_id,  current_recipient, five_sec_from_now,
+			    		                  now, five_sec_from_now, saml_oissuer,
+ 					                      now, rand_id_assert))
 
-      return response
+    if self.debug_flag:
+      xmldoc = xml.dom.minidom.parseString(response)
+      log('artifact_service response %s' %(xmldoc.toprettyxml()))
+      log('-----------  ARTIFACT END   -----------')
+
+    return response
   artifact_service.exposed = True
 
   # The SAML Authorization service (/authz) called by the GSA to query to see 
@@ -569,10 +638,11 @@ class AuthN(object):
   def authz(self):
 
     authz_request = cherrypy.request.body.read()
+    xmldoc = xml.dom.minidom.parseString(authz_request)
 
     if self.debug_flag:
       log('-----------  AUTHZ BEGIN  -----------')
-      log('AUTHZ Request: %s' % authz_request)
+      log('AUTHZ Request: %s' % xmldoc.toprettyxml())
       
     now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     # The request should look something like
@@ -629,7 +699,6 @@ class AuthN(object):
     # If we're using the internal authz system, parse out the inbound
     # request for the URI and use that to check against the local authz db
 
-    xmldoc = xml.dom.minidom.parseString(authz_request)
     samlp = xmldoc.getElementsByTagName('samlp:AuthzDecisionQuery')
 
     response = ('<soapenv:Envelope '
@@ -681,13 +750,14 @@ class AuthN(object):
              'GET</saml:Action></saml:AuthzDecisionStatement>'
              '</saml:Assertion></samlp:Response>') % (rand_id_saml_resp,now, 
                                                       rand_id_saml_assert, 
-                                                      now, decision, username,
-                                                      resource, decision)
+                                                      now, self.saml_issuer, username,
+                                                      escape(resource), decision)
 
     response = response + '</soapenv:Body></soapenv:Envelope>'    
 
     if self.debug_flag:
-      log('authz response %s' %(response))
+      xmldoc = xml.dom.minidom.parseString(response)
+      log('authz response %s' %(xmldoc.toprettyxml()))
       log('-----------  AUTHZ END  -----------')
     return response
   authz.exposed = True
@@ -728,7 +798,7 @@ if __name__ == '__main__':
   try:
     opts, args = getopt.getopt(sys.argv[1:], None,
                                ["debug", "use_fqdn_hosts", "use_ssl", "port=",
-                                "consumer_mech=", "saml_issuer"])
+                                "consumer_mech=", "saml_issuer="])
   except getopt.GetoptError:
     print ('Invalid arguments: valid args --debug --use_fqdn_hosts --use_ssl '
            '--port=<port> --consumer_mech=(saml|referer|static) '
@@ -743,7 +813,7 @@ if __name__ == '__main__':
       use_fqdn_hosts = True
     if opt == "--consumer_mech":
       if arg == "saml":
-        conuserm_mech = "saml"
+        consumer_mech = "saml"
       elif arg == "static":
         consumer_mech = "static"
       else:
