@@ -249,9 +249,11 @@ class gsaWebInterface:
     headers = {'User-Agent': 'python-urllib2', 'Content-Type': content_type}
 
     self._login()
+    security_token = self.getSecurityToken('cache')
     request = urllib2.Request(self.baseURL + "?" +
                               urllib.urlencode({'actionType': 'importExport',
                                                 'export': ' Import Configuration ',
+                                                'security_token': security_token,
                                                 'passwordIn': configPassword}),
                               body, headers)
     log.info("Sending XML...")
