@@ -277,9 +277,11 @@ class gsaWebInterface:
 
   def exportConfig(self, configPassword):
     self._login()
+    security_token = self.getSecurityToken('cache')
     request = urllib2.Request(self.baseURL + "?" +
                               urllib.urlencode({'actionType': 'importExport',
                                                 'export': ' Export Configuration ',
+                                                'security_token': security_token,
                                                 'password1': configPassword,
                                                 'password2': configPassword}))
 
@@ -787,5 +789,3 @@ if __name__ == "__main__":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.exportSynonyms(options.frontend, f)
     f.close()
-  
-    
