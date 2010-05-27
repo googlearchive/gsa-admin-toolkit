@@ -870,10 +870,6 @@ if __name__ == "__main__":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.exportSynonyms(options.frontend, f)
     f.close()
-<<<<<<< HEAD
-=======
-
   elif action == "status":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.getStatus()
->>>>>>> Added -z option to retrieve GSA^n status
