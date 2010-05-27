@@ -25,16 +25,16 @@ Example usage:
 
 1. Export the config file:
 
-gsa.py -n <host> --port 8000 -u admin -p <pw> -e --sign-password
+gsa_admin.py -n <host> --port 8000 -u admin -p <pw> -e --sign-password
 hellohello -o ~/tmp/o.xml -v
 
 2. Make a change to the config file and sign:
 
-./gsa.py -s --sign-password hellohello -f ~/tmp/o.xml -v -o ~/tmp/o2.xml
+./gsa_admin.py -s --sign-password hellohello -f ~/tmp/o.xml -v -o ~/tmp/o2.xml
 
 3. Import the new config file:
 
-./gsa.py -n <host> --port 8000 -u admin -p <pw> -i --sign-password
+./gsa_admin.py -n <host> --port 8000 -u admin -p <pw> -i --sign-password
 hellohello -f ~/tmp/o2.xml -v
 
 4. Export all the URLs to a file:
@@ -506,11 +506,11 @@ class gsaWebInterface:
     result = self._openurl(request)
     content = result.read()
 
-    #if len(content)
-    #  log.error("Could not retrieve information")
-    #  exit(3)
-
     nodes = re.findall("row.*(<b>.*</b>)", content)
+    if not nodes: 
+      log.error("Could not find any replicas...")
+      exit(3)
+
     log.debug(nodes)
     connStatus = re.findall("(green|red) button", content)
     log.debug(connStatus)
