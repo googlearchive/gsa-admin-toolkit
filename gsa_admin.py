@@ -515,11 +515,13 @@ class gsaWebInterface:
     connStatus = re.findall("(green|red) button", content)
     log.debug(connStatus)
 
+    numErrs = 0
     for index, val in enumerate(connStatus):
       if val == "green":
         connStatus[index] = "OK"
       else:
-        connStatus[index] = "ERROR"
+        connStatus[index] = "ERROR - Test FAILED"
+        numErrs += 1
 
     pos = 0
     print "========================================="
@@ -533,6 +535,11 @@ class gsaWebInterface:
       pos += 5
       if pos < len(connStatus):
         print "----------------------------------------"
+    print "========================================="
+    if numErrs:
+      print numErrs,  "ERROR(s) detected. Please review mirroing status"
+    else:
+      print "All Tests passes successfully"
     print "=========================================\n"
 
     detailStats = re.search("Detailed Status(.*)\"Balls\">", content, re.DOTALL)
