@@ -42,6 +42,9 @@ hellohello -f ~/tmp/o2.xml -v
 ./gsa_admin.py --hostname=<host> --username=admin 
 --password=<pw> --all_urls --output=/tmp/all_urls
 
+5. Retrieve GSA^n (mirroring) status from the admin console
+./gsa_admin.py -z -n <host> -u admin -p <pw>
+
 Note that you must use the same password to sign a file that you used
 when exporting. You will get an error when importing if you do not do
 this.
