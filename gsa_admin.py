@@ -491,6 +491,65 @@ class gsaWebInterface:
           log.debug('we are not going to crawl this link %s' % link)
           pass
 
+  def getStatus(self):
+    """Get System Status and mirroring if enabled
+      
+      The GSA sends out daily email but it doesn't inlcude mirroing status
+      Temporary solution -- only tested with 6.2.0.G.44
+    """
+
+    self._login()
+    log.info("Retrieving GSA^n network diagnostics status from: %s", self.hostName)
+    request = urllib2.Request(self.baseURL + "?" +
+                              urllib.urlencode({'actionType': 'gsanDiagnostics'}))
+
+    result = self._openurl(request)
+    content = result.read()
+
+    #if len(content)
+    #  log.error("Could not retrieve information")
+    #  exit(3)
+
+    nodes = re.findall("row.*(<b>.*</b>)", content)
+    log.debug(nodes)
+    connStatus = re.findall("(green|red) button", content)
+    log.debug(connStatus)
+
+    for index, val in enumerate(connStatus):
+      if val == "green":
+        connStatus[index] = "OK"
+      else:
+        connStatus[index] = "ERROR"
+
+    pos = 0
+    print "========================================="
+    for node in nodes:
+      print "Node: " +  re.sub(r'<[^<]*?/?>', '', node)
+      print "Ping Status: " + connStatus[0+pos]
+      print "Stunnel Listener up: ", connStatus[1+pos]
+      print "Stunnel Connection: ", connStatus[2+pos]
+      print "PPP Connection Status: ", connStatus[3+pos]
+      print "Application Connection Status: ", connStatus[4+pos]
+      pos += 5
+      if pos < len(connStatus):
+        print "----------------------------------------"
+    print "=========================================\n"
+
+    detailStats = re.search("Detailed Status(.*)\"Balls\">", content, re.DOTALL)
+    if detailStats:
+    #Check if this is primary node and display sync info
+      detailStats = re.sub(r'</td>\n<td ', ': <', detailStats.group(), re.DOTALL)
+      detailStats = re.sub(r'</td> <td ',' | <', detailStats, re.DOTALL)
+      detailStats = re.sub(r'<[^<]*?/?>', '', detailStats)
+
+      prettyStats = detailStats.split("\n")
+      for row in prettyStats:
+        cols = row.split(": ")
+        if len(cols) > 1:
+          cols[0] = cols[0] + ":" + " " * (40 - len(cols[0]))
+        print ''.join(cols)
+      print "==========================================================="
+
 
 ###############################################################################
 # MAIN
@@ -553,10 +612,13 @@ if __name__ == "__main__":
   actionOptionsGrp.add_option("-y" ,"--synonyms_export", dest="synonyms_export",
                               help="Export All Related Queries", action="store_true")
 
+  actionOptionsGrp.add_option("-z", "--get-status", dest="getstatus",
+                              action="store_true", help="Get GSA Status")
+
   parser.add_option_group(actionOptionsGrp)
 
   # gsaHostOptions
-  gsaHostOptions = OptionGroup(parser, "import/export to/from GSA")
+  gsaHostOptions = OptionGroup(parser, "GSA info")
 
   gsaHostOptions.add_option("-n", "--hostname", dest="gsaHostName",
           help="GSA hostname")
@@ -650,9 +712,16 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "synonyms_export"
+  if options.getstatus:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "status"
   if not action:
       log.error("No action specified")
       sys.exit(3)
+
 
   if action != "sign" or action != "verify":
     #Check user, password, host
@@ -791,3 +860,10 @@ if __name__ == "__main__":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.exportSynonyms(options.frontend, f)
     f.close()
+<<<<<<< HEAD
+=======
+
+  elif action == "status":
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI.getStatus()
+>>>>>>> Added -z option to retrieve GSA^n status
