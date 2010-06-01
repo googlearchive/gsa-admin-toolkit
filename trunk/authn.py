@@ -13,6 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# This code is not supported by Google
+#
 
 
 """Simple web server for testing the Authn/Authz SPI.
@@ -33,7 +36,7 @@ usage:
                       pattern defined in the self_authz_db will be used.  You
                       must edit the self.authz_db variable within the script
                       and set the Fully Qualified URLs for your contentserver.
-                      
+
     --consumer_mech=  Specifies which mechanism to use to figure out where
                       to redirect the SAMLRequest back to.
                       The options for this switch:

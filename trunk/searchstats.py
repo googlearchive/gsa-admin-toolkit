@@ -25,6 +25,9 @@
 #   log.
 # Revised on 2008.03.20 to provide an average response time.
 # Revised on 2007.06.11 to use second-buckets rather than minute-buckets.
+#
+# This code is not supported by Google
+#
 
 import sys    # Used for processing command line arguments
 

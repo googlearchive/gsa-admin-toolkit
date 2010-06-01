@@ -31,6 +31,8 @@
  *   You should run the program from a different machine to the database
  *   machine to ensure that you are checking network connections to the DB.
  *
+ *   This code is not supported by Google
+ *
  * Usage:
  *
  *   1. Compile:

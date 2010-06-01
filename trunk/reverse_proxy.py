@@ -25,6 +25,8 @@
 #    troubleshoot connections between two servers, for example when
 #    using the Authn/Authz SPI.
 #
+# This code is not supported by Google
+#
 # TODO(jlowry): HTTPS support (http://pypi.python.org/pypi/ssl/)
 """The reverse_proxy.py module implements a reverse proxy for the GSA."""
 

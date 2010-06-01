@@ -37,6 +37,8 @@
 # Sample output from a successful query:
 #   Fri Aug 15 13:19:43 2008: Thread-3: success: 0.3 secs query: foo
 #
+# This code is not supported by Google
+#
 
 
 # TODO(jlowry):
@@ -44,7 +46,7 @@
 #    built-in scheduler module.
 #  * Implement functionality of Mohit's query repeater script that takes search logs
 #    from the GSA and replays the queries
-#TODO(lchabardes):
+# TODO(lchabardes):
 #  *Implement a benchmark feature to automaticly establish max qps for an appliance
 #  *Simplify query input: directly from search report, and/or generate query 
 #   set from clustering

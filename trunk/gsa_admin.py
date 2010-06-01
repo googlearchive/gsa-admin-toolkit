@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+#
+# This code is not supported by Google
+#
 """Classes for administering the Google Search Appliance.
 
 Currently, the classes available can be used to import/export/rewrite

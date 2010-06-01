@@ -14,7 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
+# This code is not supported by Google
+#
 
 # TODO(jlowry)
 # Make cached_copy_checker work for feeds as well as crawled docs.
