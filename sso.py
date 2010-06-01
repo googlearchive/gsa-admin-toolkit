@@ -13,7 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+#
+# This code is not supported by Google
+#
 
 """ Simple web server for testing Cookie Sites.
 
@@ -57,7 +59,7 @@ This script requires the cherrypy v3 to be installed (v2 gives an error
 since quickstart is not available).
 """
 
-__author__ = 'jlowry@google.com (John Lowry)'
+__author__ = 'jlowry@gmail.com (John Lowry)'
 
 import cherrypy
 import urllib

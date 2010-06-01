@@ -45,6 +45,7 @@
 #  * Run a query that doesn't use significant resources on the appliance,
 #    such as large value for num or a date sort of all documents.
 # 
+# This code is not supported by Google
 #
 
 appliance=""

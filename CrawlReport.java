@@ -44,6 +44,9 @@
  *
  * Please note that the parameter settings are just examples. You will have to
  * replace them with your local appliance values.
+ *
+ * This code is not supported by Google
+ *
  */
 import com.google.enterprise.apis.client.GsaClient;
 import com.google.enterprise.apis.client.GsaEntry;
