@@ -191,7 +191,8 @@ class Client(threading.Thread):
           print query_parsed
           print parameters
           raise
-        self.FetchContent(self.host, self.port, q.strip(), parameters)
+        if 'q' in parameters:
+          self.FetchContent(self.host, self.port, q.strip(), parameters)
 
   def FetchContent(self, host, port, q, parameters):
     start_time = time.ctime(time.time())
