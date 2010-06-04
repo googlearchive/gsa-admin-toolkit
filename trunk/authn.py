@@ -90,8 +90,8 @@ SETUP and RUN configuration.
       pages included in this script.  The pages and authz database for these
       pages is:
 
-      self.user_db = {'user1':'somepassword', 'user2':'otherpassword',
-                      'gsa1':'gsapassword'}
+      self.user_db = {'user1':'password1', 'user2':'password1',
+                      'gsa1':'password1'}
                         
       self.authz_db = {
        '/secure?page=secure1':'user1,user2,gsa1',
@@ -110,7 +110,7 @@ SETUP and RUN configuration.
             Crawl&Index-->Crawler Access:
                             URL Matching:  http://spi.yourdomain.com:28080/
                             Username:      gsa1
-                            Password:      password1#
+                            Password:      password1
                             Domain:        (leave blank)
             Crawl&Index-->CrawlURLs:
                         StartURLs:   http://spi.yourdomain.com:28080/
@@ -217,9 +217,9 @@ class AuthN(object):
     log ('-----> Starting authn.py <------')
 
     #authentication database in the form username: password
-    self.user_db = {'user1': 'password1#',
-                    'user2': 'password1#',
-                    'gsa1': 'password1#'}
+    self.user_db = {'user1': 'password1',
+                    'user2': 'password1',
+                    'gsa1': 'password1'}
     #the authorization database in the form URL: authorized users
     #if use_authz_db enabled then the following table applies        
     if (use_fqdn_hosts == True):
