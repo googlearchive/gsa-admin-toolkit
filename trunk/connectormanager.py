@@ -43,6 +43,8 @@ Sample Setup
 5. Configure the connector instance to use
    sample URL:  http://www.domain.com/sitemap.xml
    Delay: 60  (for example)
+6. On the GSA Admin Console, under Crawl+Follow, enter
+   http://www.domain.com/*
 6. Every 60 seconds the connector will download the sitemap and feed it into the
    GSA
    
