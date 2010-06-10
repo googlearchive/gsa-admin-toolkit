@@ -106,60 +106,49 @@ class Results(object):
     median_search = self.good_search_result_times[int(total_search_200 / 2.0) - 1]
     std_dev_search = self.good_search_result_times[int(total_search_200 * 0.9) - 1]
     max_time_search = self.good_search_result_times[-1]
+    print("Load test report:\n")
     #Stats for clustering request:
-    median_cluster = self.good_cluster_result_times[int(total_cluster_200 / 2.0) - 1]
-    std_dev_cluster = self.good_cluster_result_times[int(total_cluster_200 * 0.9) - 1]
-    max_time_cluster = self.good_cluster_result_times[-1]
+    if total_cluster_200 != 0:
+      median_cluster = self.good_cluster_result_times[int(total_cluster_200 / 2.0) - 1]
+      std_dev_cluster = self.good_cluster_result_times[int(total_cluster_200 * 0.9) - 1]
+      max_time_cluster = self.good_cluster_result_times[-1]
+      print("  \nResults Clustering Stats")
+      print("  Number of responses:")
+      print("    200:              %s" %total_cluster_200)
+      print("    errors:           %s" %self.error_cluster_result_count)
+      print("\n  Latency:")
+      print("    median:           %.2f secs" %median_cluster)
+      print("    maximum:          %.2f secs" %max_time_cluster)
+      print("    90th percentile:  %.2f secs\n" %std_dev_cluster)
     #Stats for query suggestion:
-    median_suggest = self.good_suggest_result_times[int(total_suggest_200 / 2.0) - 1]
-    std_dev_suggest = self.good_suggest_result_times[int(total_suggest_200 * 0.9) - 1]
-    max_time_suggest = self.good_suggest_result_times[-1]
-
-    return (("Load test report:\n"
-             "\nQuery Suggestions Stats\n"
-             "  Number of responses:\n"
-             "    200:              %s\n"
-             "    errors:           %s\n"
-             "\n  Latency:\n"
-             "    median:           %.2f secs\n"
-             "    maximum:          %.2f secs\n"
-             "    90th percentile:  %.2f secs\n\n"
-             "\nResults Clustering Stats\n"
-             "  Number of responses:\n"
-             "    200:              %s\n"
-             "    errors:           %s\n"
-             "\n  Latency:\n"
-             "    median:           %.2f secs\n"
-             "    maximum:          %.2f secs\n"
-             "    90th percentile:  %.2f secs\n\n"
-             "\nSearch Query Stats\n"
-             "  Number of responses:\n"
-             "    200:              %s\n"
-             "    errors:           %s\n"
-             "\n  Latency:\n"
-             "    median:           %.2f secs\n"
-             "    maximum:          %.2f secs\n"
-             "    90th percentile:  %.2f secs\n\n"
-             "Overall results\n"
-             "Number of responses:\n"
-             "  200:              %s\n"
-             "  errors:           %s\n"
-             "  total:            %s\n"
-             "\nThroughput:\n"
-             "  average:      %.2f qps\n"
-             #"\nLatency:\n"
-             #"  median:           %.2f secs\n"
-             #"  maximum:          %.2f secs\n"
-             #"  90th percentile:  %.2f secs"
-             "\n") % (total_suggest_200, self.error_suggest_result_count,
-                      median_suggest, max_time_suggest, std_dev_suggest,
-                      total_cluster_200, self.error_cluster_result_count,
-                      median_cluster, max_time_cluster, std_dev_cluster,
-                      total_search_200, self.error_search_result_count,
-                      median_search, max_time_search, std_dev_search,
-                      total_200, error_result_count, total_all, av_qps))
-                      #median, max_time, std_dev))
-
+    if total_suggest_200 != 0:
+      median_suggest = self.good_suggest_result_times[int(total_suggest_200 / 2.0) - 1]
+      std_dev_suggest = self.good_suggest_result_times[int(total_suggest_200 * 0.9) - 1]
+      max_time_suggest = self.good_suggest_result_times[-1]
+      print("\nQuery Suggestions Stats")
+      print("  Number of responses:")
+      print("    200:              %s" %total_suggest_200)
+      print("    errors:           %s" %self.error_suggest_result_count)
+      print("\n  Latency:")
+      print("    median:           %.2f secs" %median_suggest)
+      print("    maximum:          %.2f secs" %max_time_suggest)
+      print("    90th percentile:  %.2f secs\n" %std_dev_suggest)
+    print("\nSearch Query Stats")
+    print("  Number of responses:")
+    print("   200:              %s" %total_search_200)
+    print("    errors:           %s" %self.error_search_result_count)
+    print("\n  Latency:")
+    print("    median:           %.2f secs" %median_search)
+    print("    maximum:          %.2f secs" %max_time_search)
+    print("    90th percentile:  %.2f secs\n" %std_dev_search)
+    print("Overall results")
+    print("Number of responses:")
+    print("  200:              %s" %total_200)
+    print("  errors:           %s" %error_result_count)
+    print(" total:            %s" %total_all)
+    print("\nThroughput:")
+    print("  average:      %.2f qps" %av_qps)
+    
 
 class Client(threading.Thread):
 
@@ -184,8 +173,12 @@ class Client(threading.Thread):
         #Cleaning up query input to prevent invalid requests.
         if query_parsed_clean[0] == "&":
           query_parsed_clean = query_parsed_clean[1:-1]
+        query_terms = []
+        for qterm in query_parsed_clean.split('&'):
+          if qterm.find("=") != -1:
+            query_terms.append(qterm)
         try:
-          parameters = dict([param.split('=') for param in query_parsed_clean.split('&')])
+          parameters = dict([param.split('=') for param in query_terms])
         except Exception, e:
           print e
           print query_parsed
@@ -233,26 +226,26 @@ class Client(threading.Thread):
         exec_time = timer_end - timer_start
         logging.info(("%s: %s: success: %.1f secs query: "
                       "%s") % (start_time, self.getName(), exec_time, req))
-        if req.find("/suggest?") == 0:
+        if req.find("/suggest?") != -1:
           self.res.good_suggest_result_times.append(exec_time)
-        if req.find("/cluster?") == 0:
+        if req.find("/cluster?") != -1:
           self.res.good_cluster_result_times.append(exec_time)
         else:
           self.res.good_search_result_times.append(exec_time)
       except httplib.HTTPException, value:
         logging.info(("%s: %s: error: %s query: "
                       "%s") % (start_time, self.getName(), value, req))
-        if req.find("/suggest?") == 0:
+        if req.find("/suggest?") != -1:
           self.res.error_suggest_result_count += 1
-        if req.find("/cluster?") == 0:
+        if req.find("/cluster?") != -1:
           self.res.error_cluster_result_count += 1
         else:
           self.res.error_search_result_count += 1
       except socket.error, msg:
         logging.info("%s: %s: %s query: %s" % (start_time, self.getName(), msg, req))
-        if req.find("/suggest?") == 0:
+        if req.find("/suggest?") != -1:
           self.res.error_suggest_result_count += 1
-        if req.find("/cluster?") == 0:
+        if req.find("/cluster?") != -1:
           self.res.error_cluster_result_count += 1
         else:
           self.res.error_search_result_count += 1
@@ -260,9 +253,9 @@ class Client(threading.Thread):
         the_type, value, tb = sys.exc_info()
         logging.info("%s: %s: exception: %s %s query: %s" % (start_time, self.getName(),
                                                              the_type, value, req))
-        if req.find("/suggest?") == 0:
+        if req.find("/suggest?") != -1:
           self.res.error_suggest_result_count += 1
-        if req.find("/cluster?") == 0:
+        if req.find("/cluster?") != -1:
           self.res.error_cluster_result_count += 1
         else:
           self.res.error_search_result_count += 1
