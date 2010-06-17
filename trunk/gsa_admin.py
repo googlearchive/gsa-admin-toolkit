@@ -118,7 +118,16 @@ class gsaConfig:
     return self.configXMLString.encode("utf-8")
 
   def sign(self, password):
-    doc = xml.dom.minidom.parseString(self.configXMLString)
+    configXMLString = self.configXMLString
+    # ugly removal of spaces because minidom cannot remove them automatically when removing a node
+    configXMLString = re.sub('          <uam_dir>', '<uam_dir>', configXMLString)
+    configXMLString = re.sub('</uam_dir>\n', '</uam_dir>', configXMLString)
+
+    doc = xml.dom.minidom.parseString(configXMLString)
+    # Remove <uam_dir> node because new GSAs expect so
+    uamdirNode = doc.getElementsByTagName("uam_dir").item(0)
+    globalConfigNode = uamdirNode.parentNode
+    globalConfigNode.removeChild(uamdirNode)
     # Get <config> node
     configNode = doc.getElementsByTagName("config").item(0)
     # get string of Node and children (as utf-8)
@@ -131,6 +140,8 @@ class gsaConfig:
     signatureCDATANode = signatureNode.firstChild
     # Set CDATA/Text area to new HMAC
     signatureCDATANode.nodeValue = myhmac.hexdigest()
+    # Put <uam_dir> back
+    globalConfigNode.appendChild(uamdirNode)
     self.configXMLString = doc.toxml()
 
   def writeFile(self, filename):
@@ -143,7 +154,15 @@ class gsaConfig:
     doc.writexml(outputXMLFile)
 
   def verifySignature(self, password):
-    doc = xml.dom.minidom.parseString(self.getXMLContents())
+    configXMLString = self.getXMLContents()
+    # ugly removal of spaces because minidom cannot remove them automatically when removing a node
+    configXMLString = re.sub('          <uam_dir>', '<uam_dir>', configXMLString)
+    configXMLString = re.sub('</uam_dir>\n', '</uam_dir>', configXMLString)
+
+    doc = xml.dom.minidom.parseString(configXMLString)
+    # Remove <uam_dir> node because new GSAs expect so
+    uamdirNode = doc.getElementsByTagName("uam_dir").item(0)
+    uamdirNode.parentNode.removeChild(uamdirNode)
     # Get <config> node
     configNode = doc.getElementsByTagName("config").item(0)
     # get string of Node and children (as utf-8)
