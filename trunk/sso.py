@@ -66,6 +66,7 @@ import urllib
 import sys
 import time
 import getopt
+from socket import gethostname
 
 FORM_COOKIE = "ObFormLoginCookie"
 SSO_COOKIE = "ObSSOCookie"
@@ -245,10 +246,13 @@ if __name__ == '__main__':
   test_bug_950572 = False
   test_meta_refresh = False
   delay = 0
+  # By default cherrypy runs on localhost
+  # But we would normally want to run on the external interface
+  hostname = gethostname()
   try:
     opts, args = getopt.getopt(sys.argv[1:], None, ["test_cookie_path", "use_ssl",
                                                 "test_bug_950572", "test_meta_refresh",
-                                                "port=", "delay="])
+                                                "port=", "delay=", "host="])
   except getopt.GetoptError:
     print "Invalid arguments"
     sys.exit(1)
@@ -265,10 +269,13 @@ if __name__ == '__main__':
     if opt == "--test_meta_refresh":
       test_meta_refresh = True
     if opt == "--port":
+      # By default, runs on port 8080
       port = int(arg)
       cherrypy.config.update({"global": { "server.socket_port": port }})
     if opt == "--delay":
       delay = int(arg)
-  # cherrypy.server.socket_port = 8080
-  # cherrypy.server.socket_host = ""
+    if opt == "host":
+      hostname = arg
+
+  cherrypy.config.update({"global": { "server.socket_host": hostname }})
   cherrypy.quickstart(Sso(test_cookie_path, protocol, test_bug_950572, test_meta_refresh, delay))
