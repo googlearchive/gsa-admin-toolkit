@@ -35,7 +35,7 @@ Crawl and Index
     Click "Save Cookie Rule and Close Window".
 Serving > Forms Authentication
     URL: http://www.mycompany.com:8080/secure
-    Cookie name: ObSSOCookie
+    Cookie name: sso
 
     If you want to use External Login you can check the
     "Always redirect to external login server"  option and point
@@ -68,8 +68,8 @@ import time
 import getopt
 from socket import gethostname
 
-FORM_COOKIE = "ObFormLoginCookie"
-SSO_COOKIE = "ObSSOCookie"
+FORM_COOKIE = "form"
+SSO_COOKIE = "sso"
 SSO_COOKIE_DOMAIN = ""
 SEARCH_HOST = ""
 
@@ -99,7 +99,6 @@ class Sso(object):
       form_cookie = cherrypy.request.cookie[FORM_COOKIE].value
       self.redirect("login", "bad_cookie")
     else:
-      cherrypy.response.cookie[SSO_COOKIE] = "1"
       return ("<h2>Login form</h2>"
               "<form action=/login method=POST>"
               "<input type=hidden name=path value=\"%s\">"
