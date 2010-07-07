@@ -1,0 +1,445 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>Interactive Feed Client</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+<style>
+body {
+	font-family: arial, sans-serif;
+	background-color:#fff;
+	font-size: small;
+	margin: 24px 8px 8px;
+	color:#000;
+}
+#header {
+	position: relative;
+	height:50px;
+	margin:0 0 11px;
+}
+#logo {  /* in header */
+	float:left;
+	width: 175px;
+	top:-5px;
+	left:0;
+	padding:0;
+	margin:0;
+	position:absolute;
+}
+#hints {  /* in header */
+	margin:5px 0 0 174px;
+	padding:1px 0 1px 3px;
+}
+h1, h2, h3, h4, h5 {
+	font-weight:bold;
+	margin-bottom:0;
+}
+h1 {
+	font-size:large;
+	font-weight:bold;
+	border-top: 1px solid;
+	background-color: #e5ecf9;
+	border-color: #3366CC;
+	margin:5px 0 0 174px;
+	padding:1px 0 1px 3px;
+}
+h2 {
+	font-size:120%;
+	margin-top:1.5em;
+	border-bottom: 1px solid;
+	border-color: #3366CC;
+}
+h3 {
+	font-size:110%;
+	margin-top:.7em;
+	left:0;
+	top:.7em;
+}
+td {
+	 vertical-align:top;
+}
+form {
+	margin:0;
+	padding0;
+}
+
+</style>
+<script>
+function parseXML() {
+	var feedPreview = document.previewfeed.feed.value;
+	feedPreview = feedPreview.replace(/<!DOCTYPE gsafeed PUBLIC "-\/\/Google\/\/DTD GSA Feeds\/\/EN" "">/, ""); // removing the DOCTYPE since MSIE has problems with that.
+	try { // Internet Explorer
+		xmlDoc = new ActiveXObject("Microsoft.XMLDOM");
+		xmlDoc.async = "false";
+		xmlDoc.loadXML(feedPreview);
+	} catch (e) {
+		try { // Firefox, Mozilla, Opera, etc.
+			parser = new DOMParser();
+			xmlDoc = parser.parseFromString(feedPreview, "text/xml");
+		} catch (e) {
+			alert(e.message);
+			return;
+		}
+	}
+	var newRecord = xmlDoc.createElement("record");
+	if ((document.record.url.value.indexOf("https://") == 0) ||
+		(document.record.url.value.indexOf("http://") == 0) ||
+		(document.record.url.value.indexOf("unc:\\") == 0) ||
+		(document.record.url.value.indexOf("smb:") == 0)) {
+
+		newAttribute = xmlDoc.createAttribute("url");
+		newAttribute.value = document.record.url.value;
+		newRecord.setAttributeNode(newAttribute);
+	} else {
+		alert("Error: Can not update the preview since the field 'The record's URL' contains no valid URL.");
+		return;
+	}
+
+	var newAttribute = null;
+	newAttribute = xmlDoc.createAttribute("mimetype");
+	newAttribute.value = document.record.mimetype.value;
+	newRecord.setAttributeNode(newAttribute);
+	if (document.record.displayurl.value != "") {
+		newAttribute = xmlDoc.createAttribute("displayurl");
+		newAttribute.value = document.record.displayurl.value;
+		newRecord.setAttributeNode(newAttribute);
+	}
+	if (document.record.action.value != "") {
+		newAttribute = xmlDoc.createAttribute("action");
+		newAttribute.value = document.record.action.value;
+		newRecord.setAttributeNode(newAttribute);
+	}
+	if (document.record.authmethod.value != "") {
+		newAttribute = xmlDoc.createAttribute("authmethod");
+		newAttribute.value = document.record.authmethod.value;
+		newRecord.setAttributeNode(newAttribute);
+	}
+	if ((document.record.name1.value != "") && (document.record.content1.value != "") || (document.record.name2.value != "") && (document.record.content2.value != "") || (document.record.name3.value != "") && (document.record.content3.value != "")) {
+		var newMetadata = xmlDoc.createElement('metadata');
+		newRecord.appendChild(newMetadata);
+		if ((document.record.name1.value != "") && (document.record.content1.value != "")) {
+			newMeta = xmlDoc.createElement('meta');
+			newMetadata.appendChild(newMeta);
+			newAttribute = xmlDoc.createAttribute("name");
+			newAttribute.value = document.record.name1.value;
+			newMeta.setAttributeNode(newAttribute);
+			newAttribute = xmlDoc.createAttribute("content");
+			newAttribute.value = document.record.content1.value;
+			newMeta.setAttributeNode(newAttribute);
+		}
+		if ((document.record.name2.value != "") && (document.record.content2.value != "")) {
+			newMeta = xmlDoc.createElement('meta');
+			newMetadata.appendChild(newMeta);
+			newAttribute = xmlDoc.createAttribute("name");
+			newAttribute.value = document.record.name2.value;
+			newMeta.setAttributeNode(newAttribute);
+			newAttribute = xmlDoc.createAttribute("content");
+			newAttribute.value = document.record.content2.value;
+			newMeta.setAttributeNode(newAttribute);
+		}
+		if ((document.record.name3.value != "") && (document.record.content3.value != "")) {
+			newMeta = xmlDoc.createElement('meta');
+			newMetadata.appendChild(newMeta);
+			newAttribute = xmlDoc.createAttribute("name");
+			newAttribute.value = document.record.name3.value;
+			newMeta.setAttributeNode(newAttribute);
+			newAttribute = xmlDoc.createAttribute("content");
+			newAttribute.value = document.record.content3.value;
+			newMeta.setAttributeNode(newAttribute);
+		}
+	}
+	if (document.record.content.value != "") {
+		var newContent = xmlDoc.createElement('content');
+		if (document.record.base64.checked) {
+			newAttribute = xmlDoc.createAttribute("encoding");
+			newAttribute.value = "base64binary";
+			newContent.setAttributeNode(newAttribute);
+		}
+		if ((document.record.mimetype.value == "text/html") || (document.record.mimetype.value == "text/xml")) {
+			var newContentText = xmlDoc.createCDATASection(document.record.content.value);
+		} else {
+			var newContentText = xmlDoc.createTextNode(document.record.content.value);
+		}
+		newContent.appendChild(newContentText);
+		newRecord.appendChild(newContent);
+	}
+	group = xmlDoc.getElementsByTagName("group")[0];
+	try {
+		group.insertBefore(newRecord, group.firstChild);
+	} catch (e) {
+		//alert(e.message);
+		alert("Error: Can not update the preview since the preview area seems to contain not-wellformed XML code and thus can not be updated.");
+		return;
+	}
+	document.previewfeed.feed.value = '<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">\n';
+	document.previewfeed.feed.value += nodeToString(xmlDoc.getElementsByTagName("gsafeed")[0], 0);
+}
+function nodeToString(node, indentLevel) {
+	var theString = "";
+	var noWhiteSpace = "";
+	var withIndent = true;
+	var textNodeValue = "";
+	theString += insertTabs(indentLevel);
+	theString += '<' + node.nodeName;
+	for (var i = 0; i < node.attributes.length; i++) {
+		theString += ' ' + node.attributes[i].nodeName + '="' + xmlify(node.attributes[i].nodeValue) + '"';
+	}
+	if (node.hasChildNodes()) {
+		theString += '>';
+		if ((node.childNodes[0].nodeType == 3) || (node.childNodes[0].nodeType == 4)) {
+			noWhiteSpace = node.childNodes[0].nodeValue;
+			noWhiteSpace = noWhiteSpace.replace(/\s/g, "");
+		}
+		if ((node.childNodes[0].nodeType == 3) && (noWhiteSpace != "")) {
+			theString += xmlify(node.childNodes[0].nodeValue);
+			withIndent = false;
+		} else {
+			if ((node.childNodes[0].nodeType == 4) && (noWhiteSpace != "")) {
+				theString += "<![CDATA[" + node.childNodes[0].nodeValue + "]]>";
+				withIndent = false;
+			} else {
+				theString += '\n';
+			}
+		}
+		for (var i = 0; i < node.childNodes.length; i++) {
+			if (node.childNodes[i].nodeType == 1) {
+				theString += nodeToString(node.childNodes[i], indentLevel + 1);
+			}
+		}
+		if (withIndent) {
+			theString += insertTabs(indentLevel);
+		}
+		theString += '</' + node.nodeName + '>\n';
+	} else {
+		theString += '/>\n';
+	}
+	withIndent = true;
+	return theString;
+}
+function submitFeed() {
+	response.location.href = "about:blank";
+	if ((document.submitfeed.datasource.value.search(/\W/) != -1) || (document.submitfeed.datasource.value.search(/_/) != -1)) {
+		alert("Error: Can not submit the feed since the field 'Name of Data Source' must contain only alphanumeric characters.");
+		return;
+	}
+	document.submitfeed.data.value = document.previewfeed.feed.value;
+	//alert(document.submitfeed.data.value);
+	document.getElementById("submitfeed").action = document.submitfeed.gsaurl.value;
+	try { // Firefox, Mozilla, Opera, etc.
+		document.submitfeed.submit();
+	} catch (e) {
+		alert(e.message);
+		return;
+	}
+}
+function insertTabs(amount) {
+	var tabString = "";
+	for (var j = 0; j < amount; j++) {
+		tabString += "\t";
+	}
+	return tabString;
+}
+function xmlify(textNodeValue) {
+	textNodeValue = textNodeValue.replace(/</g, "&lt;");
+	textNodeValue = textNodeValue.replace(/>/g, "&gt;");
+	textNodeValue = textNodeValue.replace(/&/g, "&amp;");
+	textNodeValue = textNodeValue.replace(/"/g, "&quot;");
+	textNodeValue = textNodeValue.replace(/'/g, "&apos;");
+	return textNodeValue;
+}
+</script>
+</head>
+<body>
+<div id="header">
+<div id="logo"><a href="http://code.google.com/"><img src="http://code.google.com/images/code_sm.png" border="0" alt="Return to Google Code homepage" /></a></div>
+<h1 id="doc_title">Interactive Feed Client for the Google Search Appliance</h1>
+<div id="hints">The interactive feed client is designed for making experiments with your GSA and XML feeds. It provides a straightforward way to get familiar with XML feeds.</div>
+<div id="hints">Please read the <a href="http://code.google.com/apis/searchappliance/documentation/" target="_blank">Feeds Developer's Guide</a> to learn more about the options and capabilities of feeds.</div>
+</div>
+<table border="0" width="100%" cellpadding="15">
+<tr>
+<td valign="top" width="20%">
+<form name="record" action="">
+<h2>1. Define a Record</h2>
+<table border="0">
+<tr>
+<td style="white-space:nowrap;color:#c00;">
+The record's URL *
+</td>
+<td>
+<input size="60" type="text" name="url" value="">
+</td>
+</tr>
+<tr>
+<td style="white-space:nowrap;color:#c00;">
+Mime-type *<br>
+<span style="font-size:10px;color:#000;">(mandatory but ignored for web<br>and metadata-and-url feeds)</span>
+</td>
+<td>
+<select name="mimetype" style="width:150px">
+<option value="text/plain">text/plain</option>
+<option value="text/html">text/html</option>
+<option value="text/xml">text/xml</option>
+<option value="text/comma-separated-values">text/comma-separated-values</option>
+</select>
+</td>
+</tr>
+<tr>
+<td style="white-space:nowrap;">
+Displayed URL
+</td>
+<td>
+<input size="60" type="text" name="displayurl" value="">
+</td>
+</tr>
+<tr>
+<td>
+Action<br>
+<span style="font-size:10px;color:#000;">(applies for content feeds only)</span>
+</td>
+<td>
+<select name="action" style="width:150px">
+<option value="">default (Add)</option>
+<option value="add">Add</option>
+<option value="delete">Delete</option>
+</select>
+
+</td>
+</tr>
+<tr>
+<td style="white-space:nowrap;">
+Authentication Method<br>
+<span style="font-size:10px;color:#000;">(applies for content feeds only)</span>
+</td>
+<td>
+<select name="authmethod" style="width:150px">
+<option value="">default (none)</option>
+<option value="httpbasic">httpbasic</option>
+<option value="ntlm">NTLM</option>
+<option value="httpsso">httpsso</option>
+</select>
+</td>
+</tr>
+<tr>
+<td valign="top">
+Metadata
+</td>
+<td>
+<table border="0">
+<tr>
+<td>Name</td><td>Content</td>
+</tr>
+<tr>
+<td><input size="10" type="text" name="name1" value=""> =</td>
+<td><input size="30" type="text" name="content1" value=""></td>
+</tr>
+<tr>
+<td><input size="10" type="text" name="name2" value=""> =</td>
+<td><input size="30" type="text" name="content2" value=""></td>
+</tr>
+<tr>
+<td><input size="10" type="text" name="name3" value=""> =</td>
+<td><input size="30" type="text" name="content3" value=""></td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+<td valign="top">
+Content
+</td>
+<td>
+<textarea name="content" wrap="virtual" rows="5" style="width: 100%"></textarea>
+<br/>
+<input type="checkbox" name="base64" value="base64"> This content is Base64 encoded
+</td>
+</tr>
+</table>
+<p align="right">
+<input type="button" value="Add Record to the Feed Preview  &gt;" onClick ="parseXML();return null;">
+</p>
+</form>
+</td>
+<td valign="top">
+<form name="previewfeed">
+<h2>2. Preview the Feed</h2><br>
+<textarea name="feed" wrap="off" rows="25" style="width: 100%">
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">
+<gsafeed>
+<header>
+<datasource>web</datasource>  <!--  (this value will currently be ignored) -->
+<feedtype>full</feedtype>     <!--  (this value will currently be ignored) -->
+</header>
+<group>
+</group>
+</gsafeed>
+</textarea>
+</form>
+</td>
+</tr>
+<tr>
+<td valign="top">
+<form id="submitfeed" name="submitfeed" enctype="multipart/form-data" method="POST" action="" target="response">
+<h2>3. Submit the Feed</h2>
+<table border="0">
+<tr>
+<td style="white-space:nowrap;color:#c00;">
+Name of Data Source *
+</td>
+<td>
+<input size="10" type="text" name="datasource" value="test">
+</td>
+</tr>
+<tr>
+<td style="white-space:nowrap;color:#c00;">
+Type of Feed *
+</td>
+<td>
+<select name="feedtype" style="width:150px">
+<option value="full">Full</option>
+<option value="incremental">Incremental</option>
+<option value="metadata-and-url">Metadata and URL</option>
+</select>
+</td>
+</tr>
+<tr>
+<td>
+URL to Submit Feeds
+</td>
+<td>
+<span  style="border-top:3px #ccc groove;border-bottom:3px #ccc groove;padding:1px;border-left:3px #ccc groove;padding:1px;">http://</span>
+<input style="border-top:3px #ccc groove;border-bottom:3px #ccc groove;padding:1px;border-left:0px;border-right:0px;width:auto;" size="20" type="text" name="gsaurl" value="gsa.yourdomain.com" target="_blank">
+<span  style="border-top:3px #ccc groove;border-bottom:3px #ccc groove;padding:1px;border-right:3px #ccc groove;">:19900/xmlfeed</span>
+</td>
+</tr>
+</table>
+<input type="hidden" name="data">
+<p align="right">
+<input onClick="submitFeed();return null;" onblur="document.getElementById('response').src='about:blank'" type="button" value="Submit the Feed">
+</p>
+</form>
+</td>
+<td valign="top">
+<h2>4. Check the Server Response</h2>
+<iframe src="about:blank" name="response" id="response" width="100%" height="100" align="left" scrolling="yes" marginheight="0" marginwidth="0" frameborder="0"></iframe>
+
+</td>
+</tr>
+</table>
+<hr noshade>
+<pre>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#      http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This utility is not supported by Google
+# Author: Alex Kerschhofer
+</pre>
+</body>
+</html>
