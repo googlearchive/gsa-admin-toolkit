@@ -24,17 +24,8 @@ This script runs a lightweight GSA ConnectorManager on port 38080.
 The ConnectorManager will handle the protocol communication with the GSA and
 provide an interface for connnector implementations.
 
-Two connectors are provided separately: an example connector that consists of
-just boilerplate code (suitable for use as a base for new connector
-implementations), and a sitemap connector which just downloads a plain (not
-compressed) sitemap in xml format and proceeds to send the URLs in it as
-metadata+url feed to the GSA.  It takes the URL for the sitemap and a delay
-(in seconds) after which it should download and process the xml file.  The
-sitemap connector is provided to understand how to potentially trigger the
-'traversal' of a content system and how to feed data to the GSA.
-
 Sample Setup
-1. Install Python, cherrypy.
+1. Install Python, cherrypy3.
 2. Start the connector, listing the connector classes to be loaded, separated by
 commas: python ConnectorManager.py --debug
 --connectors=sitemap_connector.SitemapConnector,
@@ -51,8 +42,6 @@ commas: python ConnectorManager.py --debug
 6. Every 60 seconds the connector will download the sitemap and feed it into the
    GSA
 
-This script can be used as a template to write arbitrary simple connectors.
-
 The connector manger does not manage individual connectors' checkpointing or
 traversal rates--it's entirely up to connector implementations to handle
 how often and how to manage the traversal state. However, the connector base
@@ -61,9 +50,8 @@ in the configuration file. See the documentation for Connector for more
 information.
 
 Configured connector instances are stored in config.xml (created on initial
-startup) which includes the entire base64 encoded XML configuration form for
-that connector, a base64 encoded version of pickled storage data, and other
-connector settings.
+startup) which includes the entire base64 encoded XML configuration and schedule
+for that connector, and a base64 encoded version of pickled storage data.
 
 NOTE:  The protocol between the GSA and ConnectorManager is subject to change
        but is verified to work on GSA 6.2
@@ -78,24 +66,35 @@ usage:
     --connectors=     The connectors to load. Must be provided in
                       <package>.<class> form
 
-    The connector will send a feed back to the GSA by creating a postfeeder
-      #feed_type = 'incremental'
-      feeder = connectormanager.Postfeed(feed_type, debug_flag)
-      #then add some metadata or incremental data XML records
-      feeder.addrecord(strrecord)
-      #finally feed in the data with the GSA's IP address and feed name was
-      #sent in with the  __init__ constructor of the connector
-      feeder.post_multipart(gsa, name)
+    The connector sends feeds back to the GSA using the pushToGSA method in the
+    connector class. The pushToGSA method, however, requires that its 'data'
+    parameter be an XML record description, which my be quite complex to
+    construct. Thus the sendMultiContentFeed and sendContentFeed methods are
+    supplied to simplify sending content feeds to the GSA.
+    (Information about the feed XML format can be found at
+    http://code.google.com/apis/searchappliance/
+        documentation/62/feedsguide.html).
 
-    When a connector is added or modified from the GSAs admin console, the
+    When a connector is added or modified from the GSA's admin console, the
     ConnectorManager will call stopConnector() then startConnector().  The
     specific connector implementation must make sure to properly stop/start
     traversal on the content system.
 
-  --postfeed:
-       Code taken from our push_feeder.py class
-       code.google.com/apis/searchappliance/documentation/62/feedsguide.html
-       Which sends the feed to the GSA
+    It's common for a connector to have a traversal method that runs
+    periodically with a specific time interval between runs. The TimedConnector
+    abstract connector is provided for this purpose. To use this, simply extend
+    from this class and override the run() method. See the TimedConnector
+    documentation for more details.
+
+    Three example connector implementations are provided:
+      ExampleConnector: Does absolutely nothing. This serves as boilerplate
+        code, useful for writing new connectors.
+      URLConnector: Extends TimedConnector. This connector fetches the contents
+        of a URL and sends it to the GSA as a content feed. The URL and a delay
+        are specified in its configuration form.
+      SitemapConnector: Extends TimedConnector. Given a delay and a sitemap URL
+        from its configuration form, this connector will fetch the sitemap XML
+        file and send the URLs specified in the sitemap file to the GSA.
 
 http://www.cherrypy.org/
 """
@@ -126,7 +125,7 @@ class ConnectorManager(object):
   connectorimpl) and keeps a list of the instances it hosts
 
   To start the connector, simply instantiate a connector manager class
-  and pass in a dictionary mapping connector type strings to their
+  and pass in a dictionary that maps connector type strings to their
   corresponding connector classes.
 
   ConnectorManager(connector_classes, debug_flag, use_ssl, port)
@@ -153,17 +152,18 @@ class ConnectorManager(object):
     for c in self.connector_list:
       c.startConnector()
     cherrypy.quickstart(self, script_name='/')
+    for c in self.connector_list:
+      c.stopConnector()
     self.savePropFile()
 
   def index(self):
     conn_info = ''
     for c in self.connector_list:
       escaped_config = xml.sax.saxutils.escape(c.getConfig())
+      escaped_schedule = xml.sax.saxutils.escape(c.getSchedule())
       conn_info += ('Name: %s<br />Config: %s<br />'
-                    'Load: %s<br />Retry Delay: %s<br />'
-                    'Intervals: %s<br />') % (
-          c.getName(), escaped_config, c.getLoad(), c.getRetryDelay(),
-          c.getTimeIntervals())
+                    'Schedule: %s<br />') % (
+          c.getName(), escaped_config, escaped_schedule)
     return ('<html><head><title>ConnectorManager</title></head>'
             '<body><p>Index page for python ConnectorManager:<br/>'
             'Registered ConnectorTypes: %s</p><p>GSA: %s</p>'
@@ -248,28 +248,19 @@ class ConnectorManager(object):
           ConnectorName = nodes.childNodes[0].nodeValue
         if nodes.nodeName == 'ConnectorType':
           ConnectorType = nodes.childNodes[0].nodeValue
-    #first check to see if a connector with this name exists
-    #if it does, keep its old state (except the config)
-    exists = False
+    # if the connector already exists, stop it, set its config, and start it
+    # otherwise, make a new one
     c = self.getConnector(ConnectorName)
-    if c is not None:
-      exists = True
-      data = c.getData()
-      load = c.getLoad()
-      retry_delay = c.getRetryDelay()
-      intervals = c.getTimeIntervals()
+    if c:
       c.stopConnector()
-      self.removeConnector(ConnectorName)
-    #create the connector given the string form of the connectorname
-    connector_class = self.connector_classes[ConnectorType]
-    c = connector_class(ConnectorName, self.gsa, self.debug_flag)
-    c.setConfig(config)
-    if exists:
-      c.setData(data)
-      c.setLoad(load)
-      c.setRetryDelay(retry_delay)
-      c.setTimeIntervals(intervals)
-    self.setConnector(c)
+      c.setConfig(config)
+      c.init()
+      c.startConnector()
+    else:
+      connector_class = self.connector_classes[ConnectorType]
+      c = connector_class(self, ConnectorName, config, '', None)
+      self.setConnector(c)
+    self.savePropFile()
     return '<CmResponse><StatusId>0</StatusId></CmResponse>'
   setConnectorConfig.exposed = True
 
@@ -282,27 +273,17 @@ class ConnectorManager(object):
     data = cherrypy.request.body.read()
     self.log('setSchedule %s' % data)
     ConnectorName = ''
-    load = '200'
     xmldoc = xml.dom.minidom.parseString(data)
     m_node = xmldoc.getElementsByTagName('ConnectorSchedules')
-    RetryDelayMillis = '' # doesn't seem to appear when a connector is created
     for rnode in m_node:
-      rchild = rnode.childNodes
-      for nodes in rchild:
-        if nodes.nodeName == 'ConnectorName':
-          ConnectorName = nodes.childNodes[0].nodeValue
-        if nodes.nodeName == 'load':
-          load = nodes.childNodes[0].nodeValue
-        if nodes.nodeName == 'RetryDelayMillis':
-          RetryDelayMillis = nodes.childNodes[0].nodeValue
-        if nodes.nodeName == 'TimeIntervals':
-          TimeIntervals = nodes.childNodes[0].nodeValue
+      for node in rnode.childNodes:
+        if node.nodeName == 'ConnectorName':
+          ConnectorName = node.childNodes[0].nodeValue
+          break
     c = self.getConnector(ConnectorName)
     c.stopConnector()
-    c.setLoad(load)
-    c.setRetryDelay(RetryDelayMillis)
-    c.setTimeIntervals(TimeIntervals)
-    self.setConnector(c)
+    c.setSchedule(data)
+    c.init()
     c.startConnector()
     self.savePropFile()
     return '<CmResponse><StatusId>0</StatusId></CmResponse>'
@@ -329,7 +310,7 @@ class ConnectorManager(object):
                         '<ConnectorSchedule version="1">%s:%s:%s'
                         '</ConnectorSchedule>'
                         '</ConnectorInstance>') %(c.getName(),
-                                                  c.getConnectorType(),
+                                                  c.CONNECTOR_TYPE,
                                                   c.getStatus(), c.getName(),
                                                   c.getLoad(),
                                                   c.getRetryDelay(),
@@ -360,7 +341,7 @@ class ConnectorManager(object):
             '<ConnectorSchedules version="3">%s:%s:%s:%s</ConnectorSchedules>'
             '</ConnectorStatus>'
             '</CmResponse>') % (
-                c.getName(), c.getConnectorType(), c.getStatus(),
+                c.getName(), c.CONNECTOR_TYPE, c.getStatus(),
                 c.getName(), c.getLoad(), c.getRetryDelay(),
                 c.getTimeIntervals())
   getConnectorStatus.exposed = True
@@ -415,13 +396,13 @@ class ConnectorManager(object):
     str_out = '<connectormanager><connectors><gsa>%s</gsa>\n' % self.gsa
     for c in self.connector_list:
       config = base64.encodestring(c.getConfig())
+      schedule = base64.encodestring(c.getSchedule())
       data = base64.encodestring(cPickle.dumps(c.getData(), 2))
-      str_out += ('<connector><name>%s</name><type>%s</type><load>%s</load>'
-                  '<retry_delay>%s</retry_delay><intervals>%s</intervals>'
-                  '<config>%s</config><data>%s</data></connector>\n') % (
-                      c.getName(), c.getConnectorType(), c.getLoad(),
-                      c.getRetryDelay(), c.getTimeIntervals(),
-                      config, data)
+      str_out += ('<connector><name>%s</name><type>%s</type>'
+                  '<config>%s</config><schedule>%s</schedule>'
+                  '<data>%s</data></connector>\n') % (
+                      c.getName(), c.CONNECTOR_TYPE, config,
+                      schedule, data)
     str_out += '</connectors></connectormanager>\n'
     try:
       out_file = open(self.configfile, 'w')
@@ -459,27 +440,17 @@ class ConnectorManager(object):
           if nodes.nodeName == 'type':
             type = nodes.childNodes[0].nodeValue
           if nodes.nodeName == 'config':
-            config = nodes.childNodes[0].nodeValue
+            config = base64.decodestring(nodes.childNodes[0].nodeValue)
+          if nodes.nodeName == 'schedule':
+            schedule = base64.decodestring(nodes.childNodes[0].nodeValue)
           if nodes.nodeName == 'data':
-            data = nodes.childNodes[0].nodeValue
-          if nodes.nodeName == 'load':
-            load = nodes.childNodes[0].nodeValue
-          if nodes.nodeName == 'retry_delay':
-            retry_delay = nodes.childNodes[0].nodeValue
-          if nodes.nodeName == 'intervals':
-            intervals = nodes.childNodes[0].nodeValue
+            data = cPickle.loads(
+                       base64.decodestring(nodes.childNodes[0].nodeValue))
         if type not in self.connector_classes:
           print 'Connector type %s not loaded' % type
           sys.exit(1)
-        config = base64.decodestring(config)
-        data = cPickle.loads(base64.decodestring(data))
         connector_class = self.connector_classes[type]
-        c = connector_class(name, self.gsa, self.debug_flag)
-        c.setConfig(config)
-        c.setData(data)
-        c.setLoad(load)
-        c.setRetryDelay(retry_delay)
-        c.setTimeIntervals(intervals)
+        c = connector_class(self, name, config, schedule, data)
         self.setConnector(c)
     except IOError:
       print 'Error Opening Config File'
@@ -615,128 +586,110 @@ class ConnectorManager(object):
       now = datetime.datetime.now()
       print "%s  %s" % (now, deb_string)
 
-
-class Postfeed(object):
-  def __init__(self, feed_type, debug_flag):
-    self.debug_flag = debug_flag
-    self.feed_type = feed_type
-    self.records = ''
-
-  def log(self, deb_string):
-    if self.debug_flag:
-      now = datetime.datetime.now()
-      print "%s  %s" % (now, deb_string)
-
-  def addrecord(self, srecord):
-    self.log('Adding %s record: %s ' %(self.feed_type, srecord))
-    self.records += srecord
-
-  def post_multipart(self, gsa, datasource):
-    self.log('Posting Aggregated Feed to : %s' %datasource)
-    xmldata = ('<?xml version=\'1.0\' encoding=\'UTF-8\'?>'
-               '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" '
-               '"gsafeed.dtd">'
-               '<gsafeed>'
-               '<header>'
-               '<datasource>%s</datasource>'
-               '<feedtype>%s</feedtype>'
-               '</header>'
-               '<group>%s</group>'
-               '</gsafeed>') % (datasource, self.feed_type, self.records)
-
-    content_type, body = self.encode_multipart_formdata(datasource, xmldata)
-    headers = {}
-    headers['Content-type'] = content_type
-    headers['Content-length'] = str(len(body))
-    u = 'http://%s:19900/xmlfeed' % gsa
-    request_url = urllib2.Request(u, body, headers)
-    if self.debug_flag:
-      self.log('POSTING Feed to GSA %s ' %gsa)
-      self.log(request_url.get_method())
-      self.log(request_url.get_full_url())
-      self.log(request_url.headers)
-      self.log(request_url.get_data())
-    status = urllib2.urlopen(request_url).read()
-    self.records = ''
-    self.log("Response status from GSA [%s]" %status)
-    return status
-
-  def encode_multipart_formdata(self, datasource, xmldata):
-    BOUNDARY = '<<'
-    CRLF = '\r\n'
-    L = []
-    L.append('--' + BOUNDARY)
-    L.append('Content-Disposition: form-data; name="datasource"')
-    L.append('Content-Type: text/plain')
-    L.append('')
-    L.append(datasource)
-
-    L.append('--' + BOUNDARY)
-    L.append('Content-Disposition: form-data; name="feedtype"')
-    L.append('Content-Type: text/plain')
-    L.append('')
-    L.append(self.feed_type)
-
-    L.append('--' + BOUNDARY)
-    L.append('Content-Disposition: form-data; name="data"')
-    L.append('Content-Type: text/xml')
-    L.append('')
-    L.append(xmldata)
-    L.append('')
-    L.append('--' + BOUNDARY + '--')
-    L.append('')
-    body = CRLF.join(L)
-    content_type = 'multipart/form-data; boundary=%s' % BOUNDARY
-    return content_type, body
-
-
 class Connector(object):
-  """A connector interface to be implemented by connector classes"""
+  """A connector interface to be implemented by connector classes.
 
-  def __init__(self, name, gsa, debug_flag=True):
-    """Creates a connector.
+  A connector implementation must provide the CONNECTOR_TYPE field, as well as
+  the CONNECTOR_CONFIG field if it uses the configuration form generator. It
+  must implement startConnector, stopConnector, and restartConnectorTraversal.
+  If the connector does not use the configuration form generator, it must also
+  implement generateConfigForm and generateFilledConfigForm.
+
+  The ExampleConnector and TimedConnector serve as examples of direct
+  implementations of this interface.
+  """
+
+  def __init__(self, manager, name, config, schedule, data):
+    """Creates a connector, and then calls init().
+
+    This should only be called by the connector manager.
 
     Args:
+      manager: The connector manager creating the connector.
       name: The instance name.
-      gsa: The GSA's IP address.
-      debug_flag: A debug flag for logging.
+      config: The connector configuration.
+      schedule: The connector running schedule.
+      data: Stored connector data.
     """
+    self.manager = manager
     self.name = name
-    self.config = ''
-    self.data = None
-    self.gsa = gsa
-    self.load = '200'
-    self.retry_delay = '300000'
-    self.time_intervals = '0-0'
-    self.debug_flag = debug_flag
+    self.config = config
+    self.schedule = schedule
+    self.data = data
+    self.init()
+
+  def init(self):
+    """Initialization method to be implemented, if needed (the constructor is
+    only for the ConnectorManager to use). This is called right after the
+    connector is initialized, as well as when a connector's schedule or
+    configuration is changed. A connector can use this method to load any such
+    configuration or scheduling data and use it appropriately.
+    """
+    pass
 
   @staticmethod
-  def getConfigForm():
+  def generateConfigFormField(name, spec, value=''):
+    fieldstr = ''
+    if spec['type'] == 'text':
+      fieldstr = '<input type="text" name="%s" value="%s" />' % (name, value)
+    return fieldstr
+
+  @classmethod
+  def generateConfigForm(cls):
+    """Generates a configuration form from cls.CONNECTOR_CONFIG.
+
+    Returns:
+      A string of HTML ready to be injected into the GSA admin form.
+    """
+    rows = []
+    # for now, this only works with text input fields
+    for name, spec in cls.CONNECTOR_CONFIG.iteritems():
+      field = cls.generateConfigFormField(name, spec)
+      row = '<tr><td>%s</td><td>%s</td></tr>' % (spec['label'], field)
+      rows.append(row)
+    return '\n'.join(rows)
+
+  def generateFilledConfigForm(self):
+    """Generates a configuration form from self.CONNECTOR_CONFIG. Similar to
+    generateConfigForm, except this fills in the form with values from
+    getConfigParam.
+
+    Returns:
+      A string of HTML ready to be injected into the GSA admin form.
+    """
+    rows = []
+    # for now, this only works with text input fields
+    for name, spec in self.CONNECTOR_CONFIG.iteritems():
+      value = self.getConfigParam(name)
+      field = self.generateConfigFormField(name, spec, value)
+      row = '<tr><td>%s</td><td>%s</td></tr>' % (spec['label'], field)
+      rows.append(row)
+    return '\n'.join(rows)
+
+  @classmethod
+  def getConfigForm(cls):
     """Returns the empty configuration form.
 
     The form should be encapsulated inside a
     <CmResponse><ConfigureResponse><FormSnippet> CDATA tag.
     """
-    raise NotImplementedError("getConfigForm() not implemented")
+    return ('<CmResponse>'
+            '<StatusId>0</StatusId>'
+            '<ConfigureResponse>'
+            '<FormSnippet><![CDATA[%s]]></FormSnippet>'
+            '</ConfigureResponse>'
+            '</CmResponse>') % cls.generateConfigForm()
 
   def getForm(self):
     """Returns a filled configuration form.
 
     (The form should not be encapsulated in anything, unlike getConfigForm)
     """
-    raise NotImplementedError("getForm() not implemented")
+    return '<![CDATA[%s]]>' % self.generateFilledConfigForm()
 
   def getName(self):
     """Returns the instance name."""
     return self.name
-
-  @staticmethod
-  def getConnectorType():
-    """Returns the connector type string.
-
-    This is required. This is used by the connector manager to identify
-    individual connector types."""
-    raise NotImplementedError("getConnectorType() not implemented")
 
   def getConfig(self):
     """Returns the raw XML configuration data."""
@@ -749,6 +702,18 @@ class Connector(object):
       config: The raw XML configuration.
     """
     self.config = config
+
+  def getSchedule(self):
+    """Returns the raw XML schedule data."""
+    return self.schedule
+
+  def setSchedule(self, schedule):
+    """Sets the connector schedule.
+
+    Args:
+      schedule: The raw XML schedule.
+    """
+    self.schedule = schedule
 
   def getData(self):
     """Returns stored data."""
@@ -771,53 +736,34 @@ class Connector(object):
   def getLoad(self):
     """Returns the current load setting (docs to traverse per min).
 
-    This parameter is initally provided inside config raw XML the connector
+    This parameter is initally provided inside the configuration XML.
     A connector does not have to do anything with this parameter.
     """
-    return self.load
-
-  def setLoad(self, load):
-    """Sets the load setting.
-
-    Args:
-      load: The load setting (docs per minute).
-    """
-    self.load = load
+    return self.getScheduleParam('load')
 
   def getRetryDelay(self):
     """Returns the retry delay."""
-    return self.retry_delay
-
-  def setRetryDelay(self, retry_delay):
-    """Sets the retry delay.
-
-    Args:
-      retry_delay: The retry delay.
-    """
-    self.retry_delay = retry_delay
+    delay = self.getScheduleParam('RetryDelayMillis')
+    # it seems that the delay isn't provided when a connector is first created,
+    # so we have to provide a default value
+    if not delay:
+      delay = '300000'
+    return delay
 
   def getTimeIntervals(self):
     """Returns the time intervals over which to traverse.
 
     The time intervals are formatted as a single string, with individual
     intervals delimited by colons.
-    This parameter is initally provided by setSchedule in the connector
-    manager. It's also set and explictly by the connector. A connector does
-    not have to do anything with this parameter (you can ignore it if needed).
+    This parameter is provided by setSchedule in the connector manager. It's
+    also set and explictly by the connector. A connector does not have to do
+    anything with this parameter (you can ignore it if needed).
     """
-    return self.time_intervals
-
-  def setTimeIntervals(self, intervals):
-    """Sets the time intervals.
-
-    Args:
-      intervals: The time intervals, delimited by colons.
-    """
-    self.time_intervals = intervals
+    return self.getScheduleParam('TimeIntervals')
 
   def getStatus(self):
     """Returns the status of the connector (0 --> OK)."""
-    raise NotImplementedError("getStatus() not implemented")
+    return '0'
 
   def startConnector(self):
     """Starts the connector.
@@ -862,20 +808,142 @@ class Connector(object):
     xmldoc = xml.dom.minidom.parseString(self.getConfig())
     m_node = xmldoc.getElementsByTagName('ConnectorConfig')
     for rnode in m_node:
-      rchild = rnode.childNodes
-      for nodes in rchild:
-        if nodes.nodeName == 'ConnectorName':
-          ConnectorName = nodes.childNodes[0].nodeValue
-        if nodes.nodeName == 'Param':
-          nodename = nodes.attributes["name"].value
-          if nodename == param_name:
-            return nodes.attributes["value"].value
+      for node in rnode.childNodes:
+        if (node.nodeName == 'Param' and
+            node.attributes["name"].value == param_name):
+            return node.attributes["value"].value
     return None
 
+  def getScheduleParam(self, param_name):
+    """Returns a specific parameter of the scheduling data set by setSchedule.
+
+    Args:
+      param_name: The parameter whose value to return.
+
+    Returns:
+      The value of the parameter, or None if the parameter is not present in
+      the configuration.
+    """
+    xmldoc = xml.dom.minidom.parseString(self.getSchedule())
+    m_node = xmldoc.getElementsByTagName('ConnectorSchedules')
+    for rnode in m_node:
+      for node in rnode.childNodes:
+        if node.nodeName == param_name:
+          return node.childNodes[0].nodeValue
+    return None
+
+  def pushToGSA(self, data, feed_type):
+    """Pushes a feed to the GSA.
+
+    Args:
+      data: The XML to send to the GSA. (This may be a hassle to
+        generate--methods such as sendContentFeed are much simpler to use if
+        they apply to the situation well enough).
+      feed_type: The feed type. Can be 'incremental', 'full', or
+        'metadata-and-xml'.
+
+    Returns:
+      The GSA response status.
+    """
+    def encode_multipart_formdata(xmldata):
+      BOUNDARY = '<<'
+      CRLF = '\r\n'
+      L = []
+      L.append('--' + BOUNDARY)
+      L.append('Content-Disposition: form-data; name="datasource"')
+      L.append('Content-Type: text/plain')
+      L.append('')
+      L.append(self.name)
+
+      L.append('--' + BOUNDARY)
+      L.append('Content-Disposition: form-data; name="feedtype"')
+      L.append('Content-Type: text/plain')
+      L.append('')
+      L.append(feed_type)
+
+      L.append('--' + BOUNDARY)
+      L.append('Content-Disposition: form-data; name="data"')
+      L.append('Content-Type: text/xml')
+      L.append('')
+      L.append(xmldata)
+      L.append('')
+      L.append('--' + BOUNDARY + '--')
+      L.append('')
+      return ('multipart/form-data; boundary=%s' % BOUNDARY, CRLF.join(L))
+
+    self.log('Posting Aggregated Feed to : %s' % self.name)
+    xmldata = ('<?xml version=\'1.0\' encoding=\'UTF-8\'?>'
+               '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" '
+               '"gsafeed.dtd">'
+               '<gsafeed>'
+               '<header>'
+               '<datasource>%s</datasource>'
+               '<feedtype>%s</feedtype>'
+               '</header>'
+               '<group>%s</group>'
+               '</gsafeed>') % (self.name, feed_type, data)
+    content_type, body = encode_multipart_formdata(xmldata)
+    headers = {}
+    headers['Content-type'] = content_type
+    headers['Content-length'] = str(len(body))
+    u = 'http://%s:19900/xmlfeed' % self.manager.gsa
+    request_url = urllib2.Request(u, body, headers)
+    if self.manager.debug_flag:
+      self.log('POSTING Feed to GSA %s ' % self.manager.gsa)
+      self.log(request_url.get_method())
+      self.log(request_url.get_full_url())
+      self.log(request_url.headers)
+      self.log(request_url.get_data())
+    status = urllib2.urlopen(request_url).read()
+    self.log("Response status from GSA [%s]" % status)
+    return status
+
+  def sendMultiContentFeed(self, records, feed_type='incremental'):
+    """Sends a content feed to the GSA, containing multiple records.
+
+    Args:
+      records: A list of tuples of content data and dictionaries of record
+      attributes. For example:
+        [
+          ('[some html content]', {
+              'url': 'http://example.com/index.html',
+              'displayurl': 'http://example.com/index.html',
+              'action': 'add',
+              'mimetype': 'text/html'
+          }),
+          ('[some more html]', { 'url': 'http://blah', etc. })
+        ]
+        Note that the fields 'url' and 'mimetype' are required by the GSA.
+      feed_type: The feed type as a string, either 'incremental' or 'full'. The
+        default value is 'incremental'.
+    """
+    parts = []
+    for content, attrs in records:
+      attrlist = []
+      for key, value in attrs.iteritems():
+        attrlist.append('%s="%s"' % (key, value))
+      attrstr = ' '.join(attrlist)
+      record_str = ('<record %s>'
+                    '<content encoding="base64binary">%s</content>'
+                    '</record>') % (attrstr, base64.encodestring(content))
+      parts.append(record_str)
+    self.pushToGSA(''.join(parts), feed_type)
+
+  def sendContentFeed(self, **attrs):
+    """Sends a content feed to the GSA, containing only one record.
+
+    This is a convenience wrapper around sendMultiContentFeed.
+    Note that the fields 'url', 'mimetype', and 'content' are required.
+    Example usage: sendSimpleContentFeed(url='http://...', action='add',
+                                         mimetype='text/html',
+                                         content='<some html>')
+    """
+    content = attrs['content']
+    del attrs['content']
+    self.sendMultiContentFeed([(content, attrs)])
+
   def log(self, deb_string):
-    if self.debug_flag:
-      now = datetime.datetime.now()
-      print "%s  %s" % (now, deb_string)
+    self.manager.log(deb_string)
 
 if __name__ == '__main__':
   port = 38080
@@ -905,10 +973,10 @@ if __name__ == '__main__':
     sys.exit(1)
 
   connector_classes = {}
-  for modulename, _, classname in (c.rpartition('.') for c in
-                                   connectors.split(',')):
+  for modulename, _, classname in [c.rpartition('.') for c in
+                                   connectors.split(',')]:
     module = __import__(modulename)
     cls = getattr(module, classname)
-    connector_classes[cls.getConnectorType()] = cls
+    connector_classes[cls.CONNECTOR_TYPE] = cls
 
   ConnectorManager(connector_classes, debug_flag, use_ssl, port)
