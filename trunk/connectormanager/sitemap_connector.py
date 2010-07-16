@@ -2,51 +2,26 @@
 #
 # Copyright 2010 Google Inc. All Rights Reserved.
 
-import connectormanager
 import datetime
-import threading
+import timed_connector
 import urllib2
 import xml.dom.minidom
 
-class SitemapConnector(connectormanager.Connector):
-#class which implements the actual connector
-#it display the config form and in the case of the 'sitemap-connector' here
-#this class will start a python threading.Timer thread and do the traversal
-#when the timer fires.
-# ConnectorManager starts this class  during its  'setConnectorConfig' call and
-#the thread itself during 'setSchedule' method.
+class SitemapConnector(timed_connector.TimedConnector):
+  CONNECTOR_TYPE = 'sitemap-connector'
+  CONNECTOR_CONFIG = {
+      'surl': { 'type': 'text', 'label': 'Sitemap URL' },
+      'delay': { 'type': 'text', 'label': 'Fetch Delay' }
+  }
 
-#  global run
+  def init(self):
+    self.setInterval(int(self.getConfigParam('delay')))
 
-  @staticmethod
-  def getConnectorType():
-    return 'sitemap-connector'
-
-  @staticmethod
-  def getConfigForm():
-    config_form = ('<CmResponse>'
-                   '<StatusId>0</StatusId>'
-                   '<ConfigureResponse>'
-                   '<FormSnippet>'
-                   '<![CDATA[<tr><td>Sitemap Connector Form</td>'
-                   '</tr><tr><td>Sitemap URL:</td><td> '
-                   '<input type="surl" size="65" name="surl"/>'
-                   '</td></tr>'
-                   '<tr><td>Fetch Delay:</td>'
-                   '<td><input type="delay" size="10" name="delay"/></td>'
-                   '</tr>]]>'
-                   '</FormSnippet>'
-                   '</ConfigureResponse>'
-                   '</CmResponse>')
-    return config_form
-
-  def getStatus(self):
-    return '0'
-
-  def run(self, u):
+  def run(self):
   # the parameters into the 'run' method
     self.log('TIMER INVOKED for %s ' % self.name)
     # now go get the sitemap.xml file itself
+    u = self.getConfigParam('surl')
     req = urllib2.Request(u)
     response = urllib2.urlopen(req)
     content = response.read()
@@ -69,7 +44,7 @@ class SitemapConnector(connectormanager.Connector):
     i = 0
     feed_type = 'metadata-and-url'
     #feed_type = 'incremental'
-    feeder = connectormanager.Postfeed(feed_type, self.debug_flag)
+    feed_parts = []
     for url in sitemap_urls:
       strrecord = ''
       if feed_type == 'metadata-and-url':
@@ -102,58 +77,22 @@ class SitemapConnector(connectormanager.Connector):
                      '<content encoding="base64binary">%s</content>'
                      '</record>') %(self.name, url, self.name, url,
                                     base64.encodestring(content))
-      feeder.addrecord(strrecord)
+      feed_parts.append(strrecord)
       #if the number of urls were going to send to the GSA right now is more
       #than what its expecting, send what we have now and reset the counter
       #afer waiting 1 min (this is the poormans traversal rate limit delay)
-      if (i >= float(self.load)):
+      if i >= float(self.getLoad()):
         print('Posting %s URLs to the GSA for connector [%s]' %(i, self.name))
-        feeder.post_multipart(self.gsa, self.name)
+        self.pushToGSA(''.join(feed_parts), feed_type)
+        feed_parts = []
         i = 0
         time.sleep(60)
       else:
         i = i+1
     if i>0:
       print ('Final posting %s URLs to the GSA for connector [%s]' %(i, self.name))
-      feeder.post_multipart(self.gsa, self.name)
-    #restart the thread again ...the threading.Timer only runs once
-    #so we reset again
-    #t = threading.Timer(int(float(delay)),
-    #   run, [name,config,delay,load,gsa,debug_flag])
-    #t.start()
+      self.pushToGSA(''.join(feed_parts), feed_type)
+      feed_parts = []
 
     # just for demonstration--store the current time of the run
     self.setData(datetime.datetime.now())
-
-  def startConnector(self):
-    self.log('Last run time for %s: %s' % (self.name, str(self.getData())))
-    #the sitemapconnector is cron trigger based in that it runs after a certain
-    #delay and stops.  You can implement any traversal scheme/scheduling here
-    #that you want to.
-    u = self.getConfigParam('surl')
-    self.delay = self.getConfigParam('delay')
-    self.log('Starting Thread for %s with delay %s  GSA %s' % (self.name,
-             self.delay, self.gsa))
-    t = threading.Timer(int(float(self.delay)), self.run, [u])
-    t.start()
-
-  def stopConnector(self):
-    self.log('Stopping Thread %s' %self.name)
-
-  def restartConnectorTraversal(self):
-    self.log('Restart Traversal Called')
-
-  #Return the completed XML form back to the ConnectorManager
-  #self.config contains the RAW XML configuration form the GSA sends down
-  def getForm(self):
-    surl = self.getConfigParam('surl')
-    delay = self.getConfigParam('delay')
-    str_out=('<![CDATA[<tr><td>Sitemap Connector Form</td>'
-             '</tr><tr><td>Sitemap URL:</td><td> '
-             '<input type="surl" size="65" name="surl" value="%s"/>'
-             '</td></tr>'
-             '<tr><td>Fetch Delay:</td>'
-             '<td>'
-             '<input type="delay" size="10" name="delay" value="%s"/>'
-             '</td></tr>]]>') %(surl, delay)
-    return str_out
