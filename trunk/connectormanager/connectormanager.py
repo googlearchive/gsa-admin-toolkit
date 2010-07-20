@@ -365,7 +365,7 @@ class ConnectorManager(object):
             '<ConfigureResponse>'
             '<FormSnippet>%s</FormSnippet>'
             '</ConfigureResponse>'
-            '</CmResponse>') % c.getForm()
+            '</CmResponse>') % c.getPopulatedConfigForm()
   getConnectorConfigToEdit.exposed = True
 
   #not implemented yet but (wtf?)
@@ -378,14 +378,14 @@ class ConnectorManager(object):
 
   def getConnector(self, connector_name):
     for con in self.connector_list:
-      if con.name == connector_name:
+      if con.getName() == connector_name:
         return con
     return None
 
   def setConnector(self, cdata):
     found = False
     for index, con in enumerate(self.connector_list):
-      if con.name == cdata.name:
+      if con.getName() == cdata.name:
         found = True
         self.connector_list[index] = cdata
     if found == False:
@@ -561,12 +561,11 @@ class ConnectorManager(object):
       for nodes in rchild:
         if nodes.nodeName == 'Identity':
           identity = nodes.childNodes[0].nodeValue
-          try:
+          if 'domain' in nodes.attributes:
             domain = nodes.attributes["domain"].value
-          except KeyError:
-            domain = ''
           source = nodes.attributes["source"].value
-          password = nodes.attributes["password"].value
+          if 'password' in nodes.attributes:
+            password = nodes.attributes["password"].value
         if nodes.nodeName == 'Resource':
           resource = nodes.childNodes[0].nodeValue
           resource_list.append(resource)
@@ -593,7 +592,7 @@ class Connector(object):
   the CONNECTOR_CONFIG field if it uses the configuration form generator. It
   must implement startConnector, stopConnector, and restartConnectorTraversal.
   If the connector does not use the configuration form generator, it must also
-  implement generateConfigForm and generateFilledConfigForm.
+  implement generateConfigForm and generatePopulatedConfigForm.
 
   The ExampleConnector and TimedConnector serve as examples of direct
   implementations of this interface.
@@ -611,11 +610,11 @@ class Connector(object):
       schedule: The connector running schedule.
       data: Stored connector data.
     """
-    self.manager = manager
-    self.name = name
-    self.config = config
-    self.schedule = schedule
-    self.data = data
+    self._manager = manager
+    self._name = name
+    self._config = config
+    self._schedule = schedule
+    self._data = data
     self.init()
 
   def init(self):
@@ -649,7 +648,7 @@ class Connector(object):
       rows.append(row)
     return '\n'.join(rows)
 
-  def generateFilledConfigForm(self):
+  def generatePopulatedConfigForm(self):
     """Generates a configuration form from self.CONNECTOR_CONFIG. Similar to
     generateConfigForm, except this fills in the form with values from
     getConfigParam.
@@ -680,20 +679,20 @@ class Connector(object):
             '</ConfigureResponse>'
             '</CmResponse>') % cls.generateConfigForm()
 
-  def getForm(self):
-    """Returns a filled configuration form.
+  def getPopulatedConfigForm(self):
+    """Returns a populated configuration form.
 
     (The form should not be encapsulated in anything, unlike getConfigForm)
     """
-    return '<![CDATA[%s]]>' % self.generateFilledConfigForm()
+    return '<![CDATA[%s]]>' % self.generatePopulatedConfigForm()
 
   def getName(self):
     """Returns the instance name."""
-    return self.name
+    return self._name
 
   def getConfig(self):
     """Returns the raw XML configuration data."""
-    return self.config
+    return self._config
 
   def setConfig(self, config):
     """Sets the connector configuration.
@@ -701,11 +700,11 @@ class Connector(object):
     Args:
       config: The raw XML configuration.
     """
-    self.config = config
+    self._config = config
 
   def getSchedule(self):
     """Returns the raw XML schedule data."""
-    return self.schedule
+    return self._schedule
 
   def setSchedule(self, schedule):
     """Sets the connector schedule.
@@ -713,11 +712,11 @@ class Connector(object):
     Args:
       schedule: The raw XML schedule.
     """
-    self.schedule = schedule
+    self._schedule = schedule
 
   def getData(self):
     """Returns stored data."""
-    return self.data
+    return self._data
 
   def setData(self, data):
     """Sets the data storage object.
@@ -731,7 +730,7 @@ class Connector(object):
     Args:
       data: The object to be stored.
     """
-    self.data = data
+    self._data = data
 
   def getLoad(self):
     """Returns the current load setting (docs to traverse per min).
@@ -739,7 +738,7 @@ class Connector(object):
     This parameter is initally provided inside the configuration XML.
     A connector does not have to do anything with this parameter.
     """
-    return self.getScheduleParam('load')
+    return int(self.getScheduleParam('load'))
 
   def getRetryDelay(self):
     """Returns the retry delay."""
@@ -747,8 +746,8 @@ class Connector(object):
     # it seems that the delay isn't provided when a connector is first created,
     # so we have to provide a default value
     if not delay:
-      delay = '300000'
-    return delay
+      return 300000
+    return int(delay)
 
   def getTimeIntervals(self):
     """Returns the time intervals over which to traverse.
@@ -853,7 +852,7 @@ class Connector(object):
       L.append('Content-Disposition: form-data; name="datasource"')
       L.append('Content-Type: text/plain')
       L.append('')
-      L.append(self.name)
+      L.append(self._name)
 
       L.append('--' + BOUNDARY)
       L.append('Content-Disposition: form-data; name="feedtype"')
@@ -871,7 +870,7 @@ class Connector(object):
       L.append('')
       return ('multipart/form-data; boundary=%s' % BOUNDARY, CRLF.join(L))
 
-    self.log('Posting Aggregated Feed to : %s' % self.name)
+    self.log('Posting Aggregated Feed to : %s' % self._name)
     xmldata = ('<?xml version=\'1.0\' encoding=\'UTF-8\'?>'
                '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" '
                '"gsafeed.dtd">'
@@ -881,15 +880,15 @@ class Connector(object):
                '<feedtype>%s</feedtype>'
                '</header>'
                '<group>%s</group>'
-               '</gsafeed>') % (self.name, feed_type, data)
+               '</gsafeed>') % (self._name, feed_type, data)
     content_type, body = encode_multipart_formdata(xmldata)
     headers = {}
     headers['Content-type'] = content_type
     headers['Content-length'] = str(len(body))
-    u = 'http://%s:19900/xmlfeed' % self.manager.gsa
+    u = 'http://%s:19900/xmlfeed' % self._manager.gsa
     request_url = urllib2.Request(u, body, headers)
-    if self.manager.debug_flag:
-      self.log('POSTING Feed to GSA %s ' % self.manager.gsa)
+    if self._manager.debug_flag:
+      self.log('POSTING Feed to GSA %s ' % self._manager.gsa)
       self.log(request_url.get_method())
       self.log(request_url.get_full_url())
       self.log(request_url.headers)
@@ -943,7 +942,7 @@ class Connector(object):
     self.sendMultiContentFeed([(content, attrs)])
 
   def log(self, deb_string):
-    self.manager.log(deb_string)
+    self._manager.log(deb_string)
 
 if __name__ == '__main__':
   port = 38080
