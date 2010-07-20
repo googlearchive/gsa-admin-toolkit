@@ -605,10 +605,10 @@ class Connector(object):
 
     Args:
       manager: The connector manager creating the connector.
-      name: The instance name.
-      config: The connector configuration.
-      schedule: The connector running schedule.
-      data: Stored connector data.
+      name: The instance name as a string.
+      config: The connector configuration XML string.
+      schedule: The connector running schedule XML string.
+      data: Stored connector data (any pickle-able object).
     """
     self._manager = manager
     self._name = name
@@ -671,6 +671,10 @@ class Connector(object):
 
     The form should be encapsulated inside a
     <CmResponse><ConfigureResponse><FormSnippet> CDATA tag.
+
+    Returns:
+      A string with the empty configuration form HTML enclosed in a
+      <CmResponse><ConfigureResponse><FormSnippet> CDATA tag.
     """
     return ('<CmResponse>'
             '<StatusId>0</StatusId>'
@@ -683,39 +687,58 @@ class Connector(object):
     """Returns a populated configuration form.
 
     (The form should not be encapsulated in anything, unlike getConfigForm)
+
+    Returns:
+      A string with the populated config form HTML enclosed in a CDATA tag.
     """
     return '<![CDATA[%s]]>' % self.generatePopulatedConfigForm()
 
   def getName(self):
-    """Returns the instance name."""
+    """Returns the connector instance name.
+
+    Returns:
+      The connector instance name as a string.
+    """
     return self._name
 
   def getConfig(self):
-    """Returns the raw XML configuration data."""
+    """Returns the connector configuration XML.
+
+    Returns:
+      The connector configuration XML string.
+    """
     return self._config
 
   def setConfig(self, config):
     """Sets the connector configuration.
 
     Args:
-      config: The raw XML configuration.
+      config: The raw XML configuration string.
     """
     self._config = config
 
   def getSchedule(self):
-    """Returns the raw XML schedule data."""
+    """Returns the raw XML schedule data.
+
+    Returns:
+      The scheduling data XML string.
+    """
     return self._schedule
 
   def setSchedule(self, schedule):
     """Sets the connector schedule.
 
     Args:
-      schedule: The raw XML schedule.
+      schedule: The raw XML schedule as a string.
     """
     self._schedule = schedule
 
   def getData(self):
-    """Returns stored data."""
+    """Returns stored data.
+
+    Returns:
+      The stored data. The type depends on the object given by setData.
+    """
     return self._data
 
   def setData(self, data):
@@ -724,24 +747,33 @@ class Connector(object):
     This data is stored via pickle and base64 along with the connector's other
     configuration data. The connector can use this to store information that
     persists through connector manager restarts.
-    (The data is only written to disk when the connector manager writes its
-    configuration file to disk.)
+    The data is only written to disk when the connector manager writes its
+    configuration file to disk.
 
     Args:
-      data: The object to be stored.
+      data: The object to be stored. This can be of any pickle-able type.
     """
     self._data = data
 
   def getLoad(self):
     """Returns the current load setting (docs to traverse per min).
 
-    This parameter is initally provided inside the configuration XML.
+    This parameter is initally provided inside the schedule XML.
     A connector does not have to do anything with this parameter.
+
+    Returns:
+      The load setting as an integer.
     """
     return int(self.getScheduleParam('load'))
 
   def getRetryDelay(self):
-    """Returns the retry delay."""
+    """Returns the retry delay in milliseconds.
+
+    The default value is 300000 milliseconds.
+
+    Returns:
+      The retry delay in milliseconds as an integer.
+    """
     delay = self.getScheduleParam('RetryDelayMillis')
     # it seems that the delay isn't provided when a connector is first created,
     # so we have to provide a default value
@@ -757,11 +789,18 @@ class Connector(object):
     This parameter is provided by setSchedule in the connector manager. It's
     also set and explictly by the connector. A connector does not have to do
     anything with this parameter (you can ignore it if needed).
+
+    Returns:
+      The time intervals setting as a string in the format described above.
     """
     return self.getScheduleParam('TimeIntervals')
 
   def getStatus(self):
-    """Returns the status of the connector (0 --> OK)."""
+    """Returns the status of the connector (0 --> OK).
+
+    Returns:
+      A string describing the status of the connector.
+    """
     return '0'
 
   def startConnector(self):
@@ -784,13 +823,32 @@ class Connector(object):
 
     This should be overridden if the connector needs to implement
     authentication. The GSA will invoke this for secure feeds.
+    The default behavior is to succeed on all inputs.
+
+    Args:
+      domain: The authentication domain (string).
+      username: The username (string).
+      password: The user's password (string).
+
+    Returns:
+      The username as a string if authentication succeeds.
     """
     return username
 
   def authorize(self, identity, domain, resource):
     """Authorizes a user.
 
-    See comment for authenticate()
+    This should be overridden if the connector needs to implement
+    authorization. The GSA will invoke this for secure feeds.
+    The default behavior is to succeed on all inputs.
+
+    Args:
+      identity: The identity trying to access the resource (string).
+      domain: The domain (string).
+      resource: The resource URL (string).
+
+    Returns:
+      A string of the authorization result.
     """
     return 'Permit'
 
@@ -798,11 +856,11 @@ class Connector(object):
     """Returns a specific parameter of the configuration data set by setConfig.
 
     Args:
-      param_name: The parameter whose value to return.
+      param_name: The parameter name.
 
     Returns:
-      The value of the parameter, or None if the parameter is not present in
-      the configuration.
+      The value of the parameter as a string, or None if the parameter is not
+      present in the configuration.
     """
     xmldoc = xml.dom.minidom.parseString(self.getConfig())
     m_node = xmldoc.getElementsByTagName('ConnectorConfig')
@@ -817,11 +875,11 @@ class Connector(object):
     """Returns a specific parameter of the scheduling data set by setSchedule.
 
     Args:
-      param_name: The parameter whose value to return.
+      param_name: The parameter name string.
 
     Returns:
-      The value of the parameter, or None if the parameter is not present in
-      the configuration.
+      The value of the parameter as a string, or None if the parameter is not
+      present in the schedule.
     """
     xmldoc = xml.dom.minidom.parseString(self.getSchedule())
     m_node = xmldoc.getElementsByTagName('ConnectorSchedules')
@@ -835,14 +893,14 @@ class Connector(object):
     """Pushes a feed to the GSA.
 
     Args:
-      data: The XML to send to the GSA. (This may be a hassle to
-        generate--methods such as sendContentFeed are much simpler to use if
-        they apply to the situation well enough).
-      feed_type: The feed type. Can be 'incremental', 'full', or
+      data: The XML string to send to the GSA. This may be a hassle to
+        generate; methods such as sendContentFeed are much simpler to use if
+        they apply to the situation well enough.
+      feed_type: The feed type string. Can be 'incremental', 'full', or
         'metadata-and-xml'.
 
     Returns:
-      The GSA response status.
+      The GSA response status as a string.
     """
     def encode_multipart_formdata(xmldata):
       BOUNDARY = '<<'
@@ -902,9 +960,9 @@ class Connector(object):
 
     Args:
       records: A list of tuples of content data and dictionaries of record
-      attributes. For example:
+        attributes. For example:
         [
-          ('[some html content]', {
+          ('[some html string]', {
               'url': 'http://example.com/index.html',
               'displayurl': 'http://example.com/index.html',
               'action': 'add',
@@ -915,6 +973,9 @@ class Connector(object):
         Note that the fields 'url' and 'mimetype' are required by the GSA.
       feed_type: The feed type as a string, either 'incremental' or 'full'. The
         default value is 'incremental'.
+
+    Returns:
+      The GSA response string.
     """
     parts = []
     for content, attrs in records:
@@ -926,22 +987,33 @@ class Connector(object):
                     '<content encoding="base64binary">%s</content>'
                     '</record>') % (attrstr, base64.encodestring(content))
       parts.append(record_str)
-    self.pushToGSA(''.join(parts), feed_type)
+    return self.pushToGSA(''.join(parts), feed_type)
 
   def sendContentFeed(self, **attrs):
     """Sends a content feed to the GSA, containing only one record.
 
     This is a convenience wrapper around sendMultiContentFeed.
     Note that the fields 'url', 'mimetype', and 'content' are required.
-    Example usage: sendSimpleContentFeed(url='http://...', action='add',
-                                         mimetype='text/html',
-                                         content='<some html>')
+    Example usage: sendContentFeed(url='http://...', action='add',
+                                   mimetype='text/html',
+                                   content='<some html>')
+
+    Returns:
+      The GSA response string.
     """
     content = attrs['content']
     del attrs['content']
-    self.sendMultiContentFeed([(content, attrs)])
+    return self.sendMultiContentFeed([(content, attrs)])
 
   def log(self, deb_string):
+    """Writes a string to the log.
+
+    The log string is printed only if the connector manager is run with the
+    --debug flag.
+
+    Args:
+      deb_string: The string to print to the log.
+    """
     self._manager.log(deb_string)
 
 if __name__ == '__main__':
