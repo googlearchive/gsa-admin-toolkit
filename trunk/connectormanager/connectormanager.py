@@ -592,7 +592,7 @@ class Connector(object):
   the CONNECTOR_CONFIG field if it uses the configuration form generator. It
   must implement startConnector, stopConnector, and restartConnectorTraversal.
   If the connector does not use the configuration form generator, it must also
-  implement generateConfigForm and generatePopulatedConfigForm.
+  implement getConfigForm and getPopulatedConfigForm.
 
   The ExampleConnector and TimedConnector serve as examples of direct
   implementations of this interface.
@@ -627,14 +627,14 @@ class Connector(object):
     pass
 
   @staticmethod
-  def generateConfigFormField(name, spec, value=''):
+  def _generateConfigFormField(name, spec, value=''):
     fieldstr = ''
     if spec['type'] == 'text':
       fieldstr = '<input type="text" name="%s" value="%s" />' % (name, value)
     return fieldstr
 
   @classmethod
-  def generateConfigForm(cls):
+  def _generateConfigForm(cls):
     """Generates a configuration form from cls.CONNECTOR_CONFIG.
 
     Returns:
@@ -643,14 +643,14 @@ class Connector(object):
     rows = []
     # for now, this only works with text input fields
     for name, spec in cls.CONNECTOR_CONFIG.iteritems():
-      field = cls.generateConfigFormField(name, spec)
+      field = cls._generateConfigFormField(name, spec)
       row = '<tr><td>%s</td><td>%s</td></tr>' % (spec['label'], field)
       rows.append(row)
     return '\n'.join(rows)
 
-  def generatePopulatedConfigForm(self):
+  def _generatePopulatedConfigForm(self):
     """Generates a configuration form from self.CONNECTOR_CONFIG. Similar to
-    generateConfigForm, except this fills in the form with values from
+    _generateConfigForm, except this fills in the form with values from
     getConfigParam.
 
     Returns:
@@ -660,7 +660,7 @@ class Connector(object):
     # for now, this only works with text input fields
     for name, spec in self.CONNECTOR_CONFIG.iteritems():
       value = self.getConfigParam(name)
-      field = self.generateConfigFormField(name, spec, value)
+      field = self._generateConfigFormField(name, spec, value)
       row = '<tr><td>%s</td><td>%s</td></tr>' % (spec['label'], field)
       rows.append(row)
     return '\n'.join(rows)
@@ -681,7 +681,7 @@ class Connector(object):
             '<ConfigureResponse>'
             '<FormSnippet><![CDATA[%s]]></FormSnippet>'
             '</ConfigureResponse>'
-            '</CmResponse>') % cls.generateConfigForm()
+            '</CmResponse>') % cls._generateConfigForm()
 
   def getPopulatedConfigForm(self):
     """Returns a populated configuration form.
@@ -691,7 +691,7 @@ class Connector(object):
     Returns:
       A string with the populated config form HTML enclosed in a CDATA tag.
     """
-    return '<![CDATA[%s]]>' % self.generatePopulatedConfigForm()
+    return '<![CDATA[%s]]>' % self._generatePopulatedConfigForm()
 
   def getName(self):
     """Returns the connector instance name.
