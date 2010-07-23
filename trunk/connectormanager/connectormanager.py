@@ -105,7 +105,9 @@ import base64
 import cPickle
 import datetime
 import getopt
+import logging
 import os
+import platform
 import sys
 import urllib2
 import xml.dom.minidom
@@ -134,6 +136,7 @@ class ConnectorManager(object):
   gsa = ''
   configfile = 'config.xml'
   connector_list = []
+  loggers = {}
 
   def __init__(self, connector_classes, debug_flag, use_ssl, port):
     self.debug_flag = debug_flag
@@ -150,9 +153,11 @@ class ConnectorManager(object):
     cherrypy.config.update({'global': {'server.socket_port': port}})
     self.loadPropFile()
     for c in self.connector_list:
+      self.logger().debug('Starting connector: ' + c.getName())
       c.startConnector()
     cherrypy.quickstart(self, script_name='/')
     for c in self.connector_list:
+      self.logger().debug('Stopping connector: ' + c.getName())
       c.stopConnector()
     self.savePropFile()
 
@@ -177,7 +182,7 @@ class ConnectorManager(object):
     #<FeederGate host="172.25.17.23" port="19900"/>
     #</ManagerConfig>
     data = cherrypy.request.body.read()
-    self.log('setManagerConfig  %s' % data)
+    self.logger().debug('setManagerConfig  %s' % data)
     xmldoc = xml.dom.minidom.parseString(data)
     m_node = xmldoc.getElementsByTagName('ManagerConfig')
     for rnode in m_node:
@@ -185,7 +190,7 @@ class ConnectorManager(object):
       for nodes in rchild:
         if nodes.nodeName == 'FeederGate':
           self.gsa = nodes.attributes["host"].value
-    self.log(('Registered GSA at %s') %(self.gsa))
+    self.logger().debug(('Registered GSA at %s') %(self.gsa))
     return '<CmResponse><StatusId>0</StatusId></CmResponse>'
   setManagerConfig.exposed = True
 
@@ -194,35 +199,27 @@ class ConnectorManager(object):
     data = cherrypy.request.body.read()
     if self.gsa == '':
       self.gsa = cherrypy.request.remote.ip
-    self.log('testConnectivity  %s' %data)
-    return ('<CmResponse>'
-            '<Info>Google Enterprise Connector Manager 2.0.0 (build 2123  '
-            'June 12 2009); Sun Microsystems Inc. '
-            'OpenJDK 64-Bit Server VM 1.6.0_0; Linux '
-            '2.6.24-gg804003-generic (amd64)</Info>'
-            '<StatusId>0</StatusId>'
-            '</CmResponse>')
+    self.logger().debug('testConnectivity  %s' %data)
+    return ('<CmResponse><Info>%s</Info>'
+            '<StatusId>0</StatusId></CmResponse>') % self.getPlatformInfo()
   testConnectivity.exposed = True
 
   def getConnectorList(self, ConnectorType=None):
-    self.log(('getConnectorList '))
+    self.logger().debug(('getConnectorList '))
     connector_types = ''
     for connector_type in self.connector_classes:
       connector_types += '<ConnectorType>%s</ConnectorType>' % connector_type
 
     return ('<CmResponse>'
-            '<Info>Google Enterprise Connector Manager 2.0.0 '
-            '(build 2123  June 12 2009); Sun Microsystems Inc. '
-            'OpenJDK 64-Bit Server VM 1.6.0_0; '
-            'Linux 2.6.24-gg804003-generic (amd64)</Info>'
+            '<Info>%s</Info>'
             '<StatusId>0</StatusId>'
             '<ConnectorTypes>%s</ConnectorTypes>'
-            '</CmResponse>') % connector_types
+            '</CmResponse>') % (self.getPlatformInfo(), connector_types)
   getConnectorList.exposed = True
 
   def getConfigForm(self, Lang=None, ConnectorType=None):
     #Lang=en&ConnectorType=sitemap-connector
-    self.log('getConfigForm ConnectorType=%s' % ConnectorType)
+    self.logger().debug('getConfigForm ConnectorType=%s' % ConnectorType)
     return self.connector_classes[ConnectorType].getConfigForm()
   getConfigForm.exposed = True
 
@@ -236,7 +233,7 @@ class ConnectorManager(object):
     #<Param  name="interval" value="interval value"/>
     #</ConnectorConfig>
     config = cherrypy.request.body.read()
-    self.log('setConnectorConfig  %s' % config)
+    self.logger().debug('setConnectorConfig  %s' % config)
     ConnectorName = ''
     ConnectorType = ''
     xmldoc = xml.dom.minidom.parseString(config)
@@ -271,7 +268,7 @@ class ConnectorManager(object):
     #<TimeIntervals>0-0</TimeIntervals>
     #</ConnectorSchedules>
     data = cherrypy.request.body.read()
-    self.log('setSchedule %s' % data)
+    self.logger().debug('setSchedule %s' % data)
     ConnectorName = ''
     xmldoc = xml.dom.minidom.parseString(data)
     m_node = xmldoc.getElementsByTagName('ConnectorSchedules')
@@ -291,15 +288,13 @@ class ConnectorManager(object):
 
   #Returns a list of all the connector instances running
   def getConnectorInstanceList(self, Lang=None):
-    self.log('getConnectorInstanceList')
+    self.logger().debug('getConnectorInstanceList')
     instance_list = ''
     if not self.connector_list:
       return ('<CmResponse>'
-              '<Info>Google Enterprise Connector Manager 2.0.0 (build 2123  '
-              'June 12 2009); Sun Microsystems Inc. OpenJDK 64-Bit '
-              'Server VM 1.6.0_0; Linux 2.6.24-gg804003-generic (amd64)</Info>'
+              '<Info>%s</Info>'
               '<StatusId>5215</StatusId>'
-              '</CmResponse>')
+              '</CmResponse>') % self.getPlatformInfo()
     for c in self.connector_list:
       instance_list += ('<ConnectorInstance>'
                         '<ConnectorName>%s</ConnectorName>'
@@ -319,18 +314,15 @@ class ConnectorManager(object):
                                                   c.getTimeIntervals())
 
     return ('<CmResponse>'
-            '<Info>Google Enterprise Connector Manager 2.0.0 '
-            '(build 2123  June 12 2009); Sun Microsystems Inc. '
-            'OpenJDK 64-Bit Server VM 1.6.0_0; Linux 2.6.24-gg804003-generic'
-            ' (amd64)</Info>'
+            '<Info>%s</Info>'
             '<StatusId>0</StatusId>'
             '<ConnectorInstances>%s</ConnectorInstances>'
-            '</CmResponse>') % instance_list
+            '</CmResponse>') % (self.getPlatformInfo(), instance_list)
   getConnectorInstanceList.exposed = True
 
   def getConnectorStatus(self, ConnectorName=None):
     # ConnectorName=sitemap-connector
-    self.log('getConnectorStatus %s' % ConnectorName)
+    self.logger().debug('getConnectorStatus %s' % ConnectorName)
     c = self.getConnector(ConnectorName)
     return ('<CmResponse>'
             '<StatusId>0</StatusId>'
@@ -348,7 +340,7 @@ class ConnectorManager(object):
 
   def removeConnector(self, ConnectorName=None):
     # ConnectorName=connector1
-    self.log('removeConnector %s' % ConnectorName)
+    self.logger().debug('removeConnector %s' % ConnectorName)
     c = self.getConnector(ConnectorName)
     self.connector_list.remove(c)
     c.stopConnector()
@@ -358,7 +350,7 @@ class ConnectorManager(object):
   removeConnector.exposed = True
 
   def getConnectorConfigToEdit(self, ConnectorName=None, Lang=None):
-    self.log('getConnectorConfigToEdit %s' % ConnectorName)
+    self.logger().debug('getConnectorConfigToEdit %s' % ConnectorName)
     c = self.getConnector(ConnectorName)
     return ('<CmResponse>'
             '<StatusId>0</StatusId>'
@@ -370,7 +362,7 @@ class ConnectorManager(object):
 
   #not implemented yet but (wtf?)
   def restartConnectorTraversal(self, ConnectorName=None, Lang=None):
-    self.log('restartConnectorTraversal %s' % ConnectorName)
+    self.logger().debug('restartConnectorTraversal %s' % ConnectorName)
     c = self.getConnector(ConnectorName)
     c.restartConnectorTraversal()
     return '<CmResponse><StatusId>%s</StatusId></CmResponse>' % c.getStatus()
@@ -392,7 +384,7 @@ class ConnectorManager(object):
       self.connector_list.append(cdata)
 
   def savePropFile(self):
-    self.log('Saving Prop file ')
+    self.logger().debug('Saving Prop file ')
     str_out = '<connectormanager><connectors><gsa>%s</gsa>\n' % self.gsa
     for c in self.connector_list:
       config = base64.encodestring(c.getConfig())
@@ -412,7 +404,7 @@ class ConnectorManager(object):
       print 'Error Saving Config File'
 
   def loadPropFile(self):
-    self.log('Loading Prop File')
+    self.logger().debug('Loading Prop File')
     try:
       if not os.path.exists(self.configfile):
         in_file = open(self.configfile, 'w')
@@ -429,8 +421,8 @@ class ConnectorManager(object):
         if self.gsa == '':
           self.gsa = cgsa
       except IndexError:
-        self.log(('GSA Address not found in config file..'
-                 'waiting for testConnectivity()'))
+        self.logger().debug(('GSA Address not found in config file..'
+                             'waiting for testConnectivity()'))
       m_node = xmldoc.getElementsByTagName('connector')
       for rnode in m_node:
         rchild = rnode.childNodes
@@ -454,6 +446,11 @@ class ConnectorManager(object):
         self.setConnector(c)
     except IOError:
       print 'Error Opening Config File'
+
+  def getPlatformInfo(self):
+    return 'Google Python Connector Manager; Python %s; %s %s (%s)' % (
+        platform.python_version(), platform.system(),
+        platform.release(), platform.machine())
 
   def authenticate(self):
     #<AuthnRequest>
@@ -487,7 +484,7 @@ class ConnectorManager(object):
     # </CmResponse>
 
     data = cherrypy.request.body.read()
-    self.log(('authenticate '))
+    self.logger().debug('authenticate ')
     domain = ''
     username = ''
     password = ''
@@ -547,7 +544,7 @@ class ConnectorManager(object):
     #</CmResponse>
 
     data = cherrypy.request.body.read()
-    self.log(('authorize '))
+    self.logger().debug('authorize ')
     str_response = ('<CmResponse><AuthorizationResponse>')
     domain = ''
     identity = ''
@@ -580,10 +577,38 @@ class ConnectorManager(object):
     return str_response
   authorization.exposed = True
 
-  def log(self, deb_string):
-    if self.debug_flag:
-      now = datetime.datetime.now()
-      print "%s  %s" % (now, deb_string)
+  def logger(self, src=None):
+    """Returns a Logger object designated for the src object.
+
+    If src is None, then the Logger for the connector manager will be returned.
+    If a logger for src has never been created, one will be created and stored.
+    Otherwise, the stored logger will be returned.
+
+    Args:
+      src: The object whose logger to return.
+
+    Returns:
+      The Logger object for src.
+    """
+    if not src:
+      src = self
+    if src not in self.loggers:
+      if src is self:
+        srcname = 'connectormanager'
+      else:
+        srcname = 'connector-' + src.getName()
+      logger = logging.getLogger(srcname)
+      ch = logging.StreamHandler()
+      formatter = logging.Formatter(
+          '[%(asctime)s %(name)s %(levelname)s] %(message)s',
+          '%Y/%m/%d:%H:%M:%S')
+      ch.setFormatter(formatter)
+      logger.addHandler(ch)
+      if self.debug_flag:
+        logger.setLevel(logging.DEBUG)
+        ch.setLevel(logging.DEBUG)
+      self.loggers[src] = logger
+    return self.loggers[src]
 
 class Connector(object):
   """A connector interface to be implemented by connector classes.
@@ -831,7 +856,7 @@ class Connector(object):
       password: The user's password (string).
 
     Returns:
-      The username as a string if authentication succeeds.
+      The username string on success, or None on failure.
     """
     return username
 
@@ -848,7 +873,7 @@ class Connector(object):
       resource: The resource URL (string).
 
     Returns:
-      A string of the authorization result.
+      The authorization response string ('Permit', 'Deny', or 'Indeterminate').
     """
     return 'Permit'
 
@@ -928,7 +953,7 @@ class Connector(object):
       L.append('')
       return ('multipart/form-data; boundary=%s' % BOUNDARY, CRLF.join(L))
 
-    self.log('Posting Aggregated Feed to : %s' % self._name)
+    self.logger().debug('Posting Aggregated Feed to : %s' % self._name)
     xmldata = ('<?xml version=\'1.0\' encoding=\'UTF-8\'?>'
                '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" '
                '"gsafeed.dtd">'
@@ -946,13 +971,13 @@ class Connector(object):
     u = 'http://%s:19900/xmlfeed' % self._manager.gsa
     request_url = urllib2.Request(u, body, headers)
     if self._manager.debug_flag:
-      self.log('POSTING Feed to GSA %s ' % self._manager.gsa)
-      self.log(request_url.get_method())
-      self.log(request_url.get_full_url())
-      self.log(request_url.headers)
-      self.log(request_url.get_data())
+      self.logger().debug('POSTING Feed to GSA %s ' % self._manager.gsa)
+      self.logger().debug(request_url.get_method())
+      self.logger().debug(request_url.get_full_url())
+      self.logger().debug(request_url.headers)
+      self.logger().debug(request_url.get_data())
     status = urllib2.urlopen(request_url).read()
-    self.log("Response status from GSA [%s]" % status)
+    self.logger().debug("Response status from GSA [%s]" % status)
     return status
 
   def sendMultiContentFeed(self, records, feed_type='incremental'):
@@ -1005,16 +1030,13 @@ class Connector(object):
     del attrs['content']
     return self.sendMultiContentFeed([(content, attrs)])
 
-  def log(self, deb_string):
-    """Writes a string to the log.
+  def logger(self):
+    """Returns this connector's logger.
 
-    The log string is printed only if the connector manager is run with the
-    --debug flag.
-
-    Args:
-      deb_string: The string to print to the log.
+    Returns:
+      The Logger object belonging to this connector.
     """
-    self._manager.log(deb_string)
+    return self._manager.logger(self)
 
 if __name__ == '__main__':
   port = 38080
