@@ -151,15 +151,15 @@ class ConnectorManager(object):
     else:
       cherrypy.config.update({'global': {'log.screen': False}})
     cherrypy.config.update({'global': {'server.socket_port': port}})
-    self.loadPropFile()
+    self._loadPropFile()
     for c in self.connector_list:
-      self.logger().debug('Starting connector: ' + c.getName())
+      self.logger().info('Starting connector: ' + c.getName())
       c.startConnector()
     cherrypy.quickstart(self, script_name='/')
     for c in self.connector_list:
-      self.logger().debug('Stopping connector: ' + c.getName())
+      self.logger().info('Stopping connector: ' + c.getName())
       c.stopConnector()
-    self.savePropFile()
+    self._savePropFile()
 
   def index(self):
     conn_info = ''
@@ -201,7 +201,7 @@ class ConnectorManager(object):
       self.gsa = cherrypy.request.remote.ip
     self.logger().debug('testConnectivity  %s' %data)
     return ('<CmResponse><Info>%s</Info>'
-            '<StatusId>0</StatusId></CmResponse>') % self.getPlatformInfo()
+            '<StatusId>0</StatusId></CmResponse>') % self._getPlatformInfo()
   testConnectivity.exposed = True
 
   def getConnectorList(self, ConnectorType=None):
@@ -214,7 +214,7 @@ class ConnectorManager(object):
             '<Info>%s</Info>'
             '<StatusId>0</StatusId>'
             '<ConnectorTypes>%s</ConnectorTypes>'
-            '</CmResponse>') % (self.getPlatformInfo(), connector_types)
+            '</CmResponse>') % (self._getPlatformInfo(), connector_types)
   getConnectorList.exposed = True
 
   def getConfigForm(self, Lang=None, ConnectorType=None):
@@ -247,7 +247,7 @@ class ConnectorManager(object):
           ConnectorType = nodes.childNodes[0].nodeValue
     # if the connector already exists, stop it, set its config, and start it
     # otherwise, make a new one
-    c = self.getConnector(ConnectorName)
+    c = self._getConnector(ConnectorName)
     if c:
       c.stopConnector()
       c.setConfig(config)
@@ -256,8 +256,8 @@ class ConnectorManager(object):
     else:
       connector_class = self.connector_classes[ConnectorType]
       c = connector_class(self, ConnectorName, config, '', None)
-      self.setConnector(c)
-    self.savePropFile()
+      self._setConnector(c)
+    self._savePropFile()
     return '<CmResponse><StatusId>0</StatusId></CmResponse>'
   setConnectorConfig.exposed = True
 
@@ -277,12 +277,12 @@ class ConnectorManager(object):
         if node.nodeName == 'ConnectorName':
           ConnectorName = node.childNodes[0].nodeValue
           break
-    c = self.getConnector(ConnectorName)
+    c = self._getConnector(ConnectorName)
     c.stopConnector()
     c.setSchedule(data)
     c.init()
     c.startConnector()
-    self.savePropFile()
+    self._savePropFile()
     return '<CmResponse><StatusId>0</StatusId></CmResponse>'
   setSchedule.exposed = True
 
@@ -294,7 +294,7 @@ class ConnectorManager(object):
       return ('<CmResponse>'
               '<Info>%s</Info>'
               '<StatusId>5215</StatusId>'
-              '</CmResponse>') % self.getPlatformInfo()
+              '</CmResponse>') % self._getPlatformInfo()
     for c in self.connector_list:
       instance_list += ('<ConnectorInstance>'
                         '<ConnectorName>%s</ConnectorName>'
@@ -317,13 +317,13 @@ class ConnectorManager(object):
             '<Info>%s</Info>'
             '<StatusId>0</StatusId>'
             '<ConnectorInstances>%s</ConnectorInstances>'
-            '</CmResponse>') % (self.getPlatformInfo(), instance_list)
+            '</CmResponse>') % (self._getPlatformInfo(), instance_list)
   getConnectorInstanceList.exposed = True
 
   def getConnectorStatus(self, ConnectorName=None):
     # ConnectorName=sitemap-connector
     self.logger().debug('getConnectorStatus %s' % ConnectorName)
-    c = self.getConnector(ConnectorName)
+    c = self._getConnector(ConnectorName)
     return ('<CmResponse>'
             '<StatusId>0</StatusId>'
             '<ConnectorStatus>'
@@ -341,17 +341,17 @@ class ConnectorManager(object):
   def removeConnector(self, ConnectorName=None):
     # ConnectorName=connector1
     self.logger().debug('removeConnector %s' % ConnectorName)
-    c = self.getConnector(ConnectorName)
+    c = self._getConnector(ConnectorName)
     self.connector_list.remove(c)
     c.stopConnector()
     c = None
-    self.savePropFile()
+    self._savePropFile()
     return '<CmResponse><StatusId>0</StatusId></CmResponse>'
   removeConnector.exposed = True
 
   def getConnectorConfigToEdit(self, ConnectorName=None, Lang=None):
     self.logger().debug('getConnectorConfigToEdit %s' % ConnectorName)
-    c = self.getConnector(ConnectorName)
+    c = self._getConnector(ConnectorName)
     return ('<CmResponse>'
             '<StatusId>0</StatusId>'
             '<ConfigureResponse>'
@@ -363,94 +363,10 @@ class ConnectorManager(object):
   #not implemented yet but (wtf?)
   def restartConnectorTraversal(self, ConnectorName=None, Lang=None):
     self.logger().debug('restartConnectorTraversal %s' % ConnectorName)
-    c = self.getConnector(ConnectorName)
+    c = self._getConnector(ConnectorName)
     c.restartConnectorTraversal()
     return '<CmResponse><StatusId>%s</StatusId></CmResponse>' % c.getStatus()
   restartConnectorTraversal.exposed = True
-
-  def getConnector(self, connector_name):
-    for con in self.connector_list:
-      if con.getName() == connector_name:
-        return con
-    return None
-
-  def setConnector(self, cdata):
-    found = False
-    for index, con in enumerate(self.connector_list):
-      if con.getName() == cdata.name:
-        found = True
-        self.connector_list[index] = cdata
-    if found == False:
-      self.connector_list.append(cdata)
-
-  def savePropFile(self):
-    self.logger().debug('Saving Prop file ')
-    str_out = '<connectormanager><connectors><gsa>%s</gsa>\n' % self.gsa
-    for c in self.connector_list:
-      config = base64.encodestring(c.getConfig())
-      schedule = base64.encodestring(c.getSchedule())
-      data = base64.encodestring(cPickle.dumps(c.getData(), 2))
-      str_out += ('<connector><name>%s</name><type>%s</type>'
-                  '<config>%s</config><schedule>%s</schedule>'
-                  '<data>%s</data></connector>\n') % (
-                      c.getName(), c.CONNECTOR_TYPE, config,
-                      schedule, data)
-    str_out += '</connectors></connectormanager>\n'
-    try:
-      out_file = open(self.configfile, 'w')
-      out_file.write(str_out)
-      out_file.close()
-    except IOError:
-      print 'Error Saving Config File'
-
-  def loadPropFile(self):
-    self.logger().debug('Loading Prop File')
-    try:
-      if not os.path.exists(self.configfile):
-        in_file = open(self.configfile, 'w')
-        in_file.close()
-        return
-      in_file = open(self.configfile, 'r')
-      text = in_file.read()
-      in_file.close()
-      xmldoc = xml.dom.minidom.parseString(text)
-      m_node = xmldoc.getElementsByTagName('gsa')
-      try:
-        for rnode in m_node:
-          cgsa = rnode.childNodes[0].nodeValue
-        if self.gsa == '':
-          self.gsa = cgsa
-      except IndexError:
-        self.logger().debug(('GSA Address not found in config file..'
-                             'waiting for testConnectivity()'))
-      m_node = xmldoc.getElementsByTagName('connector')
-      for rnode in m_node:
-        rchild = rnode.childNodes
-        for nodes in rchild:
-          if nodes.nodeName == 'name':
-            name = nodes.childNodes[0].nodeValue
-          if nodes.nodeName == 'type':
-            type = nodes.childNodes[0].nodeValue
-          if nodes.nodeName == 'config':
-            config = base64.decodestring(nodes.childNodes[0].nodeValue)
-          if nodes.nodeName == 'schedule':
-            schedule = base64.decodestring(nodes.childNodes[0].nodeValue)
-          if nodes.nodeName == 'data':
-            data = cPickle.loads(
-                       base64.decodestring(nodes.childNodes[0].nodeValue))
-        if type not in self.connector_classes:
-          print 'Connector type %s not loaded' % type
-          sys.exit(1)
-        connector_class = self.connector_classes[type]
-        c = connector_class(self, name, config, schedule, data)
-        self.setConnector(c)
-    except IOError:
-      print 'Error Opening Config File'
-
-  def getPlatformInfo(self):
-    return 'Google Python Connector Manager; Python %s; %s %s (%s)' % (
-        platform.python_version(), platform.system(),
-        platform.release(), platform.machine())
 
   def authenticate(self):
     #<AuthnRequest>
@@ -609,6 +525,91 @@ class ConnectorManager(object):
         ch.setLevel(logging.DEBUG)
       self.loggers[src] = logger
     return self.loggers[src]
+
+  def _getConnector(self, connector_name):
+    for con in self.connector_list:
+      if con.getName() == connector_name:
+        return con
+    return None
+
+  def _setConnector(self, cdata):
+    found = False
+    for index, con in enumerate(self.connector_list):
+      if con.getName() == cdata.name:
+        found = True
+        self.connector_list[index] = cdata
+    if found == False:
+      self.connector_list.append(cdata)
+
+  def _savePropFile(self):
+    self.logger().debug('Saving Prop file ')
+    str_out = '<connectormanager><connectors><gsa>%s</gsa>\n' % self.gsa
+    for c in self.connector_list:
+      config = base64.encodestring(c.getConfig())
+      schedule = base64.encodestring(c.getSchedule())
+      data = base64.encodestring(cPickle.dumps(c.getData(), 2))
+      str_out += ('<connector><name>%s</name><type>%s</type>'
+                  '<config>%s</config><schedule>%s</schedule>'
+                  '<data>%s</data></connector>\n') % (
+                      c.getName(), c.CONNECTOR_TYPE, config,
+                      schedule, data)
+    str_out += '</connectors></connectormanager>\n'
+    try:
+      out_file = open(self.configfile, 'w')
+      out_file.write(str_out)
+      out_file.close()
+    except IOError:
+      print 'Error Saving Config File'
+
+  def _loadPropFile(self):
+    self.logger().debug('Loading Prop File')
+    try:
+      if not os.path.exists(self.configfile):
+        in_file = open(self.configfile, 'w')
+        in_file.close()
+        return
+      in_file = open(self.configfile, 'r')
+      text = in_file.read()
+      in_file.close()
+      xmldoc = xml.dom.minidom.parseString(text)
+      m_node = xmldoc.getElementsByTagName('gsa')
+      try:
+        for rnode in m_node:
+          cgsa = rnode.childNodes[0].nodeValue
+        if self.gsa == '':
+          self.gsa = cgsa
+      except IndexError:
+        self.logger().debug(('GSA Address not found in config file..'
+                             'waiting for testConnectivity()'))
+      m_node = xmldoc.getElementsByTagName('connector')
+      for rnode in m_node:
+        rchild = rnode.childNodes
+        for nodes in rchild:
+          if nodes.nodeName == 'name':
+            name = nodes.childNodes[0].nodeValue
+          if nodes.nodeName == 'type':
+            type = nodes.childNodes[0].nodeValue
+          if nodes.nodeName == 'config':
+            config = base64.decodestring(nodes.childNodes[0].nodeValue)
+          if nodes.nodeName == 'schedule':
+            schedule = base64.decodestring(nodes.childNodes[0].nodeValue)
+          if nodes.nodeName == 'data':
+            data = cPickle.loads(
+                       base64.decodestring(nodes.childNodes[0].nodeValue))
+        if type not in self.connector_classes:
+          print 'Connector type %s not loaded' % type
+          sys.exit(1)
+        connector_class = self.connector_classes[type]
+        c = connector_class(self, name, config, schedule, data)
+        self._setConnector(c)
+    except IOError:
+      print 'Error Opening Config File'
+
+  def _getPlatformInfo(self):
+    return 'Google Python Connector Manager; Python %s; %s %s (%s)' % (
+        platform.python_version(), platform.system(),
+        platform.release(), platform.machine())
+
 
 class Connector(object):
   """A connector interface to be implemented by connector classes.
