@@ -535,7 +535,7 @@ class ConnectorManager(object):
   def _setConnector(self, cdata):
     found = False
     for index, con in enumerate(self.connector_list):
-      if con.getName() == cdata.name:
+      if con.getName() == cdata.getName():
         found = True
         self.connector_list[index] = cdata
     if found == False:
@@ -981,6 +981,79 @@ class Connector(object):
     self.logger().debug("Response status from GSA [%s]" % status)
     return status
 
+  def generateFeedRecord(self, attrs, metadata, content):
+    """Generates a <record> element for a feed.
+
+    Args:
+      attrs: The attributes for the record tag, as a dictionary that maps
+        attribute names (strings) to their values (strings). Example:
+        {'url': 'http://example.com/index.html',
+         'displayurl': 'http://example.com/index.html',
+         'action': 'add',
+         'mimetype': 'text/html'}
+        Note that the 'url' and 'mimetype' attributes are required by the GSA.
+      metadata: Metadata tags to add to the feed (can be None if not needed).
+        Should be a dictionary that maps strings to strings.
+      content: Adds a content tag for content feeds. Should be a string, or None
+       if this is not to be a content feed.
+
+    Returns:
+      The constructed record XML element (string).
+    """
+    # generate the record attrib list string
+    attrlist = []
+    for key, value in attrs.iteritems():
+      attrlist.append('%s="%s"' % (key, value))
+    attrstr = ' '.join(attrlist)
+    # generate metadata tags
+    metastr = ''
+    if metadata:
+      metalist = []
+      for key, value in metadata.iteritems():
+        metalist.append('<meta name="%s" content="%s"/>' % (key, value))
+      metastr = '<metadata>%s</metadata>' % ''.join(metalist)
+    # generate content tag
+    contentstr = ''
+    if content:
+      contentstr = ('<content encoding="base64binary">'
+                    '%s'
+                    '</content>') % base64.encodestring(content)
+    return '<record %s>%s%s</record>' % (attrstr, metastr, contentstr)
+
+  def sendMultiMetadataAndURLFeed(self, records):
+    """Sends a metadata-and-url feed to the GSA, containing multiple records.
+
+    Args:
+      records: A list of tuples of metadata dictionaries and attribute
+        dictionaries. For example:
+        [
+          ({'url': 'http://example.com/index.hml', 'mimetype': 'text/html'},
+           {'meta1': 'test', 'meta2': 'test'}),
+          ( etc... )
+        ]
+        Note that the 'url' and 'mimetype' attrs are required by the GSA.
+
+    Returns:
+      The GSA response string.
+    """
+    parts = [self.generateFeedRecord(attrs, metadata, None)
+             for metadata, attrs in records]
+    return self.pushToGSA(''.join(parts), 'metadata-and-url')
+
+  def sendMetadataAndURLFeed(self, metadata, **attrs):
+    """Sends a metadata-and-url feed to the GSA, containing a single record.
+
+    This is a convenience wrapper around sendMultiMetadataAndURLFeed.
+    Note that the fields 'url' and 'mimetype' are required.
+    Example usage: sendMetadataAndURLFeed(url='http://...', action='add',
+                                          mimetype='text/html',
+                                          metadata={...})
+
+    Returns:
+      The GSA response string.
+    """
+    return self.sendMultiMetadataAndURLFeed([(metadata, attrs)])
+
   def sendMultiContentFeed(self, records, feed_type='incremental'):
     """Sends a content feed to the GSA, containing multiple records.
 
@@ -1003,19 +1076,11 @@ class Connector(object):
     Returns:
       The GSA response string.
     """
-    parts = []
-    for content, attrs in records:
-      attrlist = []
-      for key, value in attrs.iteritems():
-        attrlist.append('%s="%s"' % (key, value))
-      attrstr = ' '.join(attrlist)
-      record_str = ('<record %s>'
-                    '<content encoding="base64binary">%s</content>'
-                    '</record>') % (attrstr, base64.encodestring(content))
-      parts.append(record_str)
+    parts = [self.generateFeedRecord(attrs, None, content)
+             for content, attrs in records]
     return self.pushToGSA(''.join(parts), feed_type)
 
-  def sendContentFeed(self, **attrs):
+  def sendContentFeed(self, content, **attrs):
     """Sends a content feed to the GSA, containing only one record.
 
     This is a convenience wrapper around sendMultiContentFeed.
@@ -1027,8 +1092,6 @@ class Connector(object):
     Returns:
       The GSA response string.
     """
-    content = attrs['content']
-    del attrs['content']
     return self.sendMultiContentFeed([(content, attrs)])
 
   def logger(self):
