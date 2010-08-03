@@ -17,9 +17,9 @@
 # This code is not supported by Google
 #
 
-import connectormanager
+import connector
 
-class ExampleConnector(connectormanager.Connector):
+class ExampleConnector(connector.Connector):
   CONNECTOR_TYPE = 'example-connector'
   CONNECTOR_CONFIG = {
       'example_field': { 'type': 'text', 'label': 'Example field' }

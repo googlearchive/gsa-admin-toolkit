@@ -23,10 +23,10 @@ content feed.
 
 __author__ = 'jonathanho@google.com (Jonathan Ho)'
 
-import timed_connector
+import connector
 import urllib2
 
-class URLConnector(timed_connector.TimedConnector):
+class URLConnector(connector.TimedConnector):
   CONNECTOR_TYPE = 'url-connector'
   CONNECTOR_CONFIG = {
       'url': { 'type': 'text', 'label': 'URL to fetch' },
