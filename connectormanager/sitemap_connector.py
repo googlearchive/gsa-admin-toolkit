@@ -17,12 +17,12 @@
 # This code is not supported by Google
 #
 
+import connector
 import datetime
-import timed_connector
 import urllib2
 import xml.dom.minidom
 
-class SitemapConnector(timed_connector.TimedConnector):
+class SitemapConnector(connector.TimedConnector):
   CONNECTOR_TYPE = 'sitemap-connector'
   CONNECTOR_CONFIG = {
       'surl': { 'type': 'text', 'label': 'Sitemap URL' },
