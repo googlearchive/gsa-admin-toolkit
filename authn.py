@@ -18,7 +18,7 @@
 #
 
 
-"""Simple web server for testing the Authn/Authz SPI.
+"""Simple web server for testing the Authn
 
 usage:
   ./authn.py
@@ -30,169 +30,98 @@ usage:
     --port=           Set the listener port of the cherrypy webserver
                       (default 28080)
 
-    --use_fqdn_hosts  Use Fully Qualified hosts in in the authz database.  If
-                      this setting is enabled, the self.authz_db will have
-                      fully qualified hostnames.  Otherwise, just the URI
-                      pattern defined in the self_authz_db will be used.  You
-                      must edit the self.authz_db variable within the script
-                      and set the Fully Qualified URLs for your contentserver.
-
     --consumer_mech=  Specifies which mechanism to use to figure out where
                       to redirect the SAMLRequest back to.
                       The options for this switch:
-                      (saml|referer|static)  default referer
+                      (saml|static)  default saml
 
                       saml: Usually this information is
                       contained in the SAMLRequest's decoded
                       samlp:AuthnRequest/AssertionConsumerServiceURL parameter)
-                      The GSA's SPI interface (as of GSA 6.0) does not send in
-                      a AssertionConsumerServiceURL param in the saml request
-                      so we *must* use the referer  header or use static.
-
-                      referer:  Use the HTTP referer HTTP header the browser
-                      sends after a redirect by the GSA.  Recommended to use
-                      this setting with GSA 6.x.  Referer redirects to the
-                      http: port of the GSA.  If https is required,
-                      modify in def login() the following line from http to
-                      to https:
-                      location = ('http://%s/SamlArtifactConsumer?...
 
                       static: hardcoded return path (defined in def login())
-                      set the static_redirect= 
+                      Must specify --gsa_host for this option.
 
-    --saml_issuer=    set the SAML_issuer ID parameter (not used in the GSA)
+    --gsa_host=       The Fully quaified hostname of the GSA for static redirecting.
+                      Using the qualified hostname is critical for this mechanism
+                      to work (otherwise the cookies will not be transmitted
+                      properly)
+
+    --saml_issuer=    set the SAML_issuer ID parameter
+                      Default is set to authn.py
+
+    --binding=        Specifies which SAML binding to use. The options are
+                      (artifact|post) default artifact.
+
+                      artifact: This script will expose /login and
+                      /artifact_service, and the GSA should be configured to use
+                      these appropriately.
+
+                      post: This script will expose /login, and the GSA should
+                      be configured to use this /login as well as a public key
+                      associated with the private key given by --key_file.
+
+    --key_file=       The private key in PEM format to use for POST binding. A
+                      prompt will appear for the password.
+
+    --key_blank_pwd   Assume a blank password for the private key for POST
+                      binding and don't prompt for one.
+
 
 This script runs a web server on port 28080 that allows you to test the
-Authn/Authz SPI on the Google Search Appliance.
+Authn SPI on the Google Search Appliance.
 
-The authn.py script is basically a SAML IDP/Policy server which prompts users
-for BASIC username/password info and then complies with as much of the SAML2.0
-specifications the GSA handles.  It is not designed to handle full production
-load but rather just as a proof-of-concept.  The username/password combinations
-can be anything (in fact, they don't even need to be real users), but the URLs
-need to match exactly what the GSA has securely crawled in an infrastructure
+The authn.py script is basically a SAML IDP server which prompts users
+for BASIC username/password info and then complies with SAML2.0
+specifications for POST and artifact binding.
+
+It is not designed to handle full production load but rather just as a
+proof-of-concept.
 
 SETUP and RUN configuration.
-   This script supports two modes of operation: A) crawl/serve using the
-   internal basic-protected pages that comes built-in with the script (the
-   default configuration) or B) Crawl actual secure content servers and
-   specify URL patterns and Access Control Lists for users.  The latter
-   configuration is enabled by specifying the '--use_fqdn_hosts' startup flag
-   after editing the self.authz_db setting in the __init__ method
-
-   After startup, you can view the current authz_db and internal protected URLs
-   by visiting http://spi.yourdomain.com:28080/  (if spi.yourdomain.com is
+   After startup, you can view the configured username and passwords
+   by visiting http://idp.yourdomain.com:28080/  (if idp.yourdomain.com is
    where authn.py is running)
 
-   To use
-   A) If you don't want the GSA to crawl your a real content
-      server, you can use the  built in basic-protected
-      pages included in this script.  The pages and authz database for these
-      pages is:
 
-      self.user_db = {'user1':'password1', 'user2':'password1',
+   self.user_db = {'user1':'password1', 'user2':'password1',
                       'gsa1':'password1'}
-                        
-      self.authz_db = {
-       '/secure?page=secure1':'user1,user2,gsa1',
-       '/secure?page=secure2':'user1,gsa1',
-       '/secure?page=secure3':'user2,gsa1',
-       '/secure?page=secure4':'user1,user2,gsa1'}
-       
-       Which means user1,user2, user3 is allowed '/secure?page=secure1' and
-       user1,gsa1 is allowd to view '/secure?page=secure2' and so on.
 
-      This setting and internal authz_db is enabled by default so the user
-      does not have to edit/modify the script
-
-      On the GSA, set it up for crawling:
-        (assume authn.py is run on a machine called 'spi.yourdomain.com')
-            Crawl&Index-->Crawler Access:
-                            URL Matching:  http://spi.yourdomain.com:28080/
-                            Username:      gsa1
-                            Password:      password1
-                            Domain:        (leave blank)
+   On the GSA, set it up for crawling:
             Crawl&Index-->CrawlURLs:
-                        StartURLs:   http://spi.yourdomain.com:28080/
-                        Follow:      http://spi.yourdomain.com:28080/
-                        
+                        StartURLs:   http://idp.yourdomain.com:28080/
+                        Follow:      http://idp.yourdomain.com:28080/
+
             Serving-->Access Control
+                          IDP Entity ID:
+                            authn.py
                           User Login URL:
-                            http://spi.yourdomain.com:28080/login
-                          Artifact Service URL:
-                            http://spi.yourdomain.com:28080/artifact_service
-                          Authorization service URL:
-                            http://spi.yourdomain.com:28080/authz
-           check Disable prompt for Basic authentication or NTLM authentication)                       
-   
-   B) If this script is used against an actual content server
-   eg:  running on secure.yourdomain.com, then the configuration on the GSA
-   could be:
-   1.Serving-->Access Control
-           (assume authn.py is running on spi.yourdomain.com)
-           User Login URL:
-                       http://spi.yourdomain.com:28080/login
-           Artifact Service URL:
-                       http://spi.yourdomain.com:28080/artifact_service
-           Authorization service URL:
-                       http://spi.yourdomain.com:28080/authz
-           check Disable prompt for Basic authentication or NTLM authentication)
-           do NOT check Use batched SAML Authz Requests.)
+                            http://idp.yourdomain.com:28080/login
+                          Artifact Service URL (only if using artifact binding):
+                            http://idp.yourdomain.com:28080/artifact_service
+                          Public Key of IDP (only if using post binding):
+                            <public key>
+           (check Disable prompt for Basic authentication or NTLM authentication)
 
-    2.Crawling:
-            Configure the GSA to crawl Form or NTLM protected content inside
-            your infrastructure.  In the example in step 3 below,
-            assume those protected URLs are:
-
-        http://secure.yourdomain.com/protected/page1 accessible by user1,user2
-        http://secure.yourdomain.com/protected/page2 accessible by user1
-        http://secure.yourdomain.com/protected/page3 accessible by user2
-
-    3.Edit authn.py script
-             The script needs to know the URL's to authorize a list of users
-             for. Edit this script and find below
-
-             self.user_db = {'user1':'somepassword',
-                             'user2':'otherpassword',
-                             'gsa1':'gsapassword'}
-
-             (you can use real usernames/password combos for your infrastructure
-              but it is not necessary)
-
-             self.authz_db = {
-                 'http://secure.yourdomain.com/protected/page1':'user1,user2',
-                 'http://secure.yourdomain.com/protected/page2':'user1',
-                 'http://secure.yourdomain.com/protected/page3':'user2'}
-
-             If the authn.py script is requested to authorize any URLs not found
-             in this authz_db table, it will send back an "Indeterminate"
-             response.  If a user is authorized (i.e, exists in the list,
-             it will send back "Permit" otherwise "Deny"
-
-             Then run authn.py with the argument
-
-             ./authn.py --use_fqdn_hosts
-
-After the crawl has completed, you can test serving with the
-following command (need to set --consumer_mech=referer):
-
-curl --insecure --location-trusted -v --basic --user user1:password1# \
--b /tmp/cookies "http://gsa.yourdomain.com/search?q=authenticated&
-site=default_collection&client=default_frontend&output=xml&access=a"
+For POST binding, this script uses libxml2, the Python libxml2 bindings,
+xmlsec, and PyXMLSec. The user must install these in advance in order to use
+POST binding.
+PyXMLSec is available at http://pyxmlsec.labs.libre-entreprise.org/
 
 This script requires the cherrypy v3 to be installed (v2 gives an error since
 quickstart is not available).
 
 http://www.cherrypy.org/
 
-Also see: 
-code.google.com/apis/searchappliance/documentation/60/authn_authz_spi.html
+Also see:
+code.google.com/apis/searchappliance/documentation/64/authn_authz_spi.html
 """
 
 
 import base64
 import datetime
 import getopt
+import getpass
 import md5
 import random
 import sys
@@ -203,47 +132,33 @@ import xml.dom.minidom
 import zlib
 import cherrypy
 from xml.sax.saxutils import escape
+from socket import gethostname
+
+class SignatureError(Exception):
+  pass
 
 class AuthN(object):
 
-  def __init__(self, protocol, debug_flag, use_fqdn_hosts, consumer_mech, 
-               saml_issuer):
+  def __init__(self, port, protocol, debug_flag, consumer_mech,
+               saml_issuer, gsa_host, binding, key_file, key_pwd):
     self.realm = "authn"
     self.protocol = protocol
-    self.use_fqdn_hosts = use_fqdn_hosts
     self.debug_flag = debug_flag
     self.consumer_mech = consumer_mech
+    if gsa_host:
+      self.gsa_host = gsa_host
+    self.binding = binding
+    self.key_file = key_file
+    self.key_pwd = key_pwd
 
+    log ('--------------------------------')
     log ('-----> Starting authn.py <------')
+    log ('--------------------------------')
 
     #authentication database in the form username: password
     self.user_db = {'user1': 'password1',
                     'user2': 'password1',
-                    'gsa1': 'password1'}
-    #the authorization database in the form URL: authorized users
-    #if use_authz_db enabled then the following table applies        
-    if (use_fqdn_hosts == True):
-      log ('Using Fully Qualified Hosts in authz_db')
-      self.authz_db = {'http://secure.yourdomain.com/protected/page1':
-                       'user1,user2,gsa1',
-                       'http://secure.yourdomain.com/protected/page2':
-                       'user1,gsa1',
-                       'http://secure.yourdomain.com/protected/page3':
-                       'user2,gsa1',
-                       'http://secure.yourdomain.com/protected/page4':
-                       'user1,user2,gsa1'}
-    else:
-      log ('Using URI in authz_db')
-      self.authz_db = {'/secure?page=secure1':
-                       'user1,user2,gsa1',
-                       '/secure?page=secure2':
-                       'user1,gsa1',
-                       '/secure?page=secure3':
-                       'user2,gsa1',
-                       '/secure?page=secure4':
-                       'user1,user2,gsa1'}
-
-    log ('authz_db set to %s' % self.authz_db)
+                    'gsa': 'password1'}
 
     # stores the authenticated sessions
     self.authnsessions = {}
@@ -256,19 +171,24 @@ class AuthN(object):
 
   #Main landing page
   def index(self):
-    return ('<html><title>SAMPLE SPI Landing Page</title>'
-            '<body><center>'
-            '<h3>Landing page for SPI authn.py</h3>'
-            '<a href=\"public\">public</a><br/>'
-            '<a href=\"secure?page=secure1\">secure1</a><br/>'
-            '<a href=\"secure?page=secure2\">secure2</a><br/>'
-            '<a href=\"secure?page=secure3\">secure3</a><br/>'
-            '<a href=\"secure?page=secure4\">secure4</a><br/>'
-            '<a href=\"param?val1=foo&val2=bar\">param</a><br/>'
-            '<a href=\"sleep\">sleep</a><br/>'
-            'Current Logins %s<br/>'
-            'Authz Table %s'
-            '</center></body></html>') %(self.user_db, self.authz_db)
+    indexHTML = ('<html><title>Authn Landing Page</title>'
+                 '<body><center>'
+                 '<h3>Landing page for SPI authn.py</h3>'
+                 '<p>'
+                 'The following usernames/passwords are available for testing<br>'
+                 '</p><p>')
+
+    # Generate a username/password table
+    indexHTML += ('<table  border="1" cellpadding="5" cellspacing="0">'
+                  '<tr><th>Username</th><th>Password</th></tr>')
+
+    for user in self.user_db:
+      indexHTML += ('<tr><td>' + user + '</td><td>' + self.user_db[user] +
+                    '</td></tr>')
+    indexHTML += ('</table>'
+                  '<p><a href="login">Login</a>'
+                  '</center></body></html>')
+    return indexHTML
   index.exposed = True
 
   # Collects and verifies the username/password combos for BASIC authentication.
@@ -278,164 +198,116 @@ class AuthN(object):
     cherrypy.tools.basic_auth.callable(self.realm, self.passwd_db)
     return cherrypy.request.login
 
-  # Public page
-  def public(self):
-    return 'Anyone can view this page. No authentication is required"'
-  public.exposed = True
-
-  # Secure pages for the internal basic-auth system.  The ?page=<pagename>
-  # parameter determines which
-  # page is going to get shown.
-  def secure(self, page = None):
-    login = self.authenticate()
-    if self.debug_flag:
-      log ('User Authenticated %s' %login)
-    if (use_fqdn_hosts == True):
-      authz_result = self.checkauthz(login,
-                                     self.protocol + '://' +
-                                     cherrypy.request.headers.get('Host', None)
-                                     + cherrypy.request.path_info + "?page="
-                                     + page)
-    else:
-      authz_result = self.checkauthz(login,"/secure?page=" + page)
-    return self.checkPermit(authz_result, login)
-  secure.exposed = True
-
-  # Routine which checks to see if a user is Permitted to see a page, otherwise
-  # send back a 401.
-  def checkPermit(self, authz_result, login):
-    if authz_result == 'Permit':
-      return ('You must be authenticated to view this page.'
-              'You are authenticated as &quot;%s&quot;.' % (login))
-    else:
-      cherrypy.response.status = 401
-      return 'Not authorized'
-
-  def param(self, val1, val2):
-    login = self.authenticate()
-    return ('The value of the &quot;val1&quot; parameter is: %s<br>'
-            'The value of the &quot;val2&quot; parameter is: %s' % (val1, val2))
-  param.exposed = True
-
-  def sleep(self):
-    login = self.authenticate()
-    time.sleep(75)
-    return 'I\'m awake!'
-  sleep.exposed = True
-
-  # Routine to check if a user is authorized to view a given resource.
-  def checkauthz(self, username, resource):
-    decision = 'Indeterminate'
-    allowed_users = None
-    try:
-      allowed_users = self.authz_db[resource]
-    except KeyError:
-      log('Resource not found in database: %s ' %(resource))
-    else:
-      arr_users = allowed_users.split(",")
-      if (self.debug_flag):
-        log('Allowed users for Resource: %s %s ' %(resource, arr_users))
-      if username in arr_users:
-        decision = 'Permit'
-      else:
-        decision = 'Deny'
-    return decision
-
   # Generates SAML 2.0 IDs randomly.
   def getrandom_samlID(self):
-    rand_art = ''
-    # Generate a randomID starting with an character
-    for i in random.sample('abcdefghijklmnopqrstuvwxyz123456789', 30):
-      rand_art += i
-    rand_prefix = ''
-    for i in random.sample('abcdefghijklmnopqrstuvwxyz', 2):
-      rand_prefix += i
-    return rand_prefix + rand_art
+    return random.choice('abcdefghijklmnopqrstuvwxyz') + hex(random.getrandbits(160))[2:-1]
 
   # Collects the SAMLRequest, RelayState and prompts uses BASIC to prompt the
   # user.
-  def login(self, RelayState=None, SAMLRequest = None, SigAlg = None, 
+  def login(self, RelayState=None, SAMLRequest = None, SigAlg = None,
             Signature = None):
     # Ask the user for username/password
     login = self.authenticate()
 
-    if self.debug_flag:
-      log('-----------  LOGIN BEGIN -----------')
-    # Generate a random artifiact ID and save it to recall later
-    rand_art = self.getrandom_samlID()
-    # Stash the artifact associated with the user it in a table so that 
-    # when asked who an artifact belongs to, we know who the user is.
-    self.authnsessions[rand_art] = (login)
+    log('-----------  LOGIN BEGIN -----------')
 
+    if SAMLRequest is None:
+      log('Received a request for authentication without SAMLRequest')
+
+      log('Authentication Succeeded')
+      log('-----------  LOGIN END  -----------')
+
+      return ('<font color=\"darkgreen\">Authentication successful for: '
+              '&quot;%s&quot;<br>However, SAMLRequest is None and we can\'t '
+              'proceed' %login)
+
+    # Now b64decode and inflate
+    # XML parse out the result
+    # the consumer service should be in
+    # samlp:AuthnRequest/AssertionConsumerServiceURL attribute
+    # it SHOULD something like:
+    #        <?xml version="1.0" encoding="UTF-8"?>
+    #            <samlp:AuthnRequest
+    #            xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
+    #            ID="eeijbbeleijhjejokdbcpcgppombbnamnjmmobbh"
+    #            Version="2.0" IssueInstant="2008-07-09T15:22:44Z"
+    #            ProtocolBinding=
+    #                "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact"
+    #            ProviderName="google.com"
+    #            AssertionConsumerServiceURL=
+    #                    "https://gsa.yourdomain.com/SamlArtifactConsumer"
+    #            IsPassive="false">
+    #            <saml:Issuer xmlns:saml=
+    #                "urn:oasis:names:tc:SAML:2.0:assertion">
+    #                google.com
+    #            </saml:Issuer>
+    #            <samlp:NameIDPolicy AllowCreate="true"
+    #            Format="urn:oasis:names:tc:SAML:1.1:
+    #                        nameid-format:unspecified" />
+    #            </samlp:AuthnRequest>
     decoded_saml = decode_base64_and_inflate(SAMLRequest)
     xmldoc = xml.dom.minidom.parseString(decoded_saml)
 
-    if self.debug_flag:
-      log('Parsed SAMLRequest: %s' %xmldoc.toprettyxml())
-
+    # Try to get the issuer and request id of the saml request
+    saml_oissuer = None
+    req_id = None
     samlpnode = xmldoc.getElementsByTagName('samlp:AuthnRequest')
-    req_id = rand_art
     for node in samlpnode:
       if node.nodeName == 'samlp:AuthnRequest':
         if samlpnode[0].hasAttribute('ID'):
-          req_id = samlpnode[0].attributes \
-                          ['ID'].value
-    self.login_request_ids[rand_art] = req_id 
-         
+          req_id = samlpnode[0].attributes['ID'].value
+        samliss = node.getElementsByTagName('saml:Issuer')
+        for n_issuer in samliss:
+          cnode = n_issuer.childNodes[0]
+          if cnode.nodeType == node.TEXT_NODE:
+            saml_oissuer = cnode.nodeValue
 
-    # We can either use the Referer header or (per SAML spec), decode/decompress
-    # the SAMLRequest to figure out 
-    # the AssertionConsumerServiceURL or just statically redirect
-    if self.consumer_mech == 'static':
-      static_redirect = 'https://gsa.yourdomain.com/SamlArtifactConsumer'
-      self.recipients[rand_art] = static_redirect
+    if not req_id:
+      log('Error: could not parse request SAML request ID')
+      return 'Error: could not parse request SAML request ID'
+
+    if self.binding == 'artifact':
+      # Generate a random artifiact ID and save it to recall later
+      rand_art = self.getrandom_samlID()
+
+      # Stash the artifact associated with the user it in a table so that
+      # when asked who an artifact belongs to, we know who the user is.
+      self.authnsessions[rand_art] = (login)
+
       if self.debug_flag:
-        log('Attempting to use STATIC  Header with Artifact [%s]'%(rand_art))
-      cherrypy.response.status = 302
-      # Redirect back to the GSA and add on the artifact,relaystate
-      if (RelayState is None):
-        location = ('%s?SAMLart=%s'
-                    % (static_redirect, rand_art))          
-      else:
-        location = ('%s?SAMLart=%s&RelayState=%s'
-                    % (static_redirect, rand_art, urllib.quote(RelayState)))
-      cherrypy.response.headers['location'] = location
+        log('Parsed SAMLRequest: %s' %xmldoc.toprettyxml())
+
+      self.login_request_ids[rand_art] = req_id
+
+    # We can either use:
+    # 1) Decode/decompress the unsigned SAMLRequest to figure out the AssertionConsumerServiceURL
+    # 2) Statically redirect: provided as a command line argument
+    if self.consumer_mech == 'static':
+      static_redirect = 'https://' + self.gsa_host + \
+      ':7843/security-manager/samlassertionconsumer'
+
+      if self.binding == 'artifact':
+        self.recipients[rand_art] = static_redirect
+        if self.debug_flag:
+          log('Attempting to use STATIC  Header with Artifact [%s]'%(rand_art))
+        # Redirect back to the GSA and add on the artifact,relaystate
+        if (RelayState is None):
+          location = ('%s?SAMLart=%s'
+                      % (static_redirect, rand_art))
+        else:
+          location = ('%s?SAMLart=%s&RelayState=%s'
+                      % (static_redirect, rand_art, urllib.quote(RelayState)))
+      elif self.binding == 'post':
+        location = static_redirect
       if self.debug_flag:
         log( 'Redirecting to: %s' %(location))
-      log('-----------  LOGIN END  -----------')       
+      log('-----------  LOGIN END  -----------')
 
-    elif (self.consumer_mech == 'saml'):
+    elif self.consumer_mech == 'saml':
       # Otherwise
       if self.debug_flag:
         log('Attempting to parse SAML AssertionConsumerServiceURL')
-        # Now b64decode and inflate
-      decoded_saml = decode_base64_and_inflate(SAMLRequest)
-      xmldoc = xml.dom.minidom.parseString(decoded_saml)
-        # XML parse out the result
-        # the consumer service should be in
-        # samlp:AuthnRequest/AssertionConsumerServiceURL attribute
-        # it SHOULD something like:
-        #        <?xml version="1.0" encoding="UTF-8"?>
-        #            <samlp:AuthnRequest
-        #            xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
-        #            ID="eeijbbeleijhjejokdbcpcgppombbnamnjmmobbh"
-        #            Version="2.0" IssueInstant="2008-07-09T15:22:44Z"
-        #            ProtocolBinding=
-        #                "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact"
-        #            ProviderName="google.com"
-        #            AssertionConsumerServiceURL=
-        #                    "https://gsa.yourdomain.com/SamlArtifactConsumer"
-        #            IsPassive="false">
-        #            <saml:Issuer xmlns:saml=
-        #                "urn:oasis:names:tc:SAML:2.0:assertion">
-        #                google.com
-        #            </saml:Issuer>
-        #            <samlp:NameIDPolicy AllowCreate="true"
-        #            Format="urn:oasis:names:tc:SAML:1.1:
-        #                        nameid-format:unspecified" />
-        #            </samlp:AuthnRequest>
 
-      samlpnode = xmldoc.getElementsByTagName('samlp:AuthnRequest')
       acs_url = None
       for node in samlpnode:
         if node.nodeName == 'samlp:AuthnRequest':
@@ -449,47 +321,64 @@ class AuthN(object):
                     ' SAMLRequest</body></html>')
           if self.debug_flag:
             log('login Parsed AssertionConsumerServiceURL: %s' %(acs_url))
+          samliss = node.getElementsByTagName('saml:Issuer')
+          for n_issuer in samliss:
+            cnode = n_issuer.childNodes[0]
+            if cnode.nodeType == node.TEXT_NODE:
+              saml_oissuer = cnode.nodeValue
 
       # We got a consumerservice URL, now redirect the browser back
       #to the GSA using that URL
-      if acs_url is not None:
-        cherrypy.response.status = 302
-        self.recipients[rand_art] = acs_url
-        if (RelayState is None):
-          location = ("%s?SAMLart=%s") % (acs_url,rand_art)
-        else:
-          location = ("%s?SAMLart=%s&RelayState=%s")%(acs_url,
-                                                      rand_art,
-                                                      urllib.quote(RelayState))
-        cherrypy.response.headers["location"] = location
+      if acs_url:
+        if self.binding == 'artifact':
+          self.recipients[rand_art] = acs_url
+          if (RelayState is None):
+            location = ("%s?SAMLart=%s") % (acs_url,rand_art)
+          else:
+            location = ("%s?SAMLart=%s&RelayState=%s")%(acs_url,
+                                                        rand_art,
+                                                        urllib.quote(RelayState))
+        elif self.binding == 'post':
+          location = acs_url
         if self.debug_flag:
           log('Redirecting to: %s' %(location))
           log('-----------  LOGIN END  -----------')
-    else: 
-      if self.debug_flag:
-        log ('Attempting to use Referer Header with Artifact [%s]'%(rand_art))
-      str_referer = cherrypy.request.headers['Referer']
-      parsed_URL = urlparse(str_referer)
-      hostname = parsed_URL.hostname
+
+    if self.binding == 'artifact':
       cherrypy.response.status = 302
-      self.recipients[rand_art] = 'https://%s/SamlArtifactConsumer' % hostname
-      # redirect back to the GSA and add on the artifact,relaystate
-      # redirect always to http://gsa.yourdomain.com/SamlArtifactConsumer
-      # if https is required, modify the line below to https
-      if (RelayState is None):
-        location = ('https://%s/SamlArtifactConsumer?SAMLart=%s'
-                    % (hostname, rand_art))
-      else:
-        location = ('https://%s/SamlArtifactConsumer?SAMLart=%s&RelayState=%s'
-                    % (hostname, rand_art, urllib.quote(RelayState)))
       cherrypy.response.headers['location'] = location
-      if self.debug_flag:
-        log('Redirecting to: %s' %(location))
-      log('-----------  LOGIN END  -----------')
-      return          
-    return ('<html><title>Error</title><body><h2>Unable to proceed: no '
-            'Referer Header or'
-            ' AssertionConsumerServiceURL</h2></body></html>')
+      return ('<html><title>Error</title><body><h2>Unable to redirect'
+              '</h2></body></html>')
+    elif self.binding == 'post':
+      now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+      five_sec_from_now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+5))
+      samlresp = self._generate_response(now, five_sec_from_now, login,
+                                         req_id, location,
+                                         saml_oissuer, True)
+      resp = ('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"'
+              'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">'
+              '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">'
+              '<body onload="document.forms[0].submit()">'
+              '<noscript>'
+              '<p>'
+              '<strong>Note:</strong> Since your browser does not support '
+              'JavaScript, you must press the Continue button once to proceed.'
+              '</p>'
+              '</noscript>'
+              '<form action="%s" method="post">'
+              '<div>'
+              '<input type="hidden" name="RelayState" value=""/>'
+              '<input type="hidden" name="SAMLResponse" value="%s"/>'
+              '</div>'
+              '<noscript>'
+              '<div>'
+              '<input type="submit" value="Continue"/>'
+              '</div>'
+              '</noscript>'
+              '</form>'
+              '</body></html>') % (location, base64.encodestring(samlresp))
+      log(resp)
+      return resp
   login.exposed = True
 
   # The SAML artifiact service.
@@ -530,8 +419,8 @@ class AuthN(object):
     xmldoc = xml.dom.minidom.parseString(authn_request)
     samlp = xmldoc.getElementsByTagName('samlp:ArtifactResolve')
 
+    log('-----------  ARTIFACT BEGIN  -----------')
     if self.debug_flag:
-      log('-----------  ARTIFACT BEGIN  -----------')
       log('artifact_service request: %s' %(xmldoc.toprettyxml()))
 
     saml_id = None
@@ -560,13 +449,13 @@ class AuthN(object):
     if (username is None):
       log('ERROR: No user assoicated with: %s' % saml_artifact)
       return 'ERROR: No user assoicated with: %s' % saml_artifact
-   
-    current_recipient = self.recipients[saml_artifact] 
+
+    current_recipient = self.recipients[saml_artifact]
     login_req_id = self.login_request_ids[saml_artifact]
     # Now clear out the table
     self.authnsessions[saml_artifact] = None
-    self.recipients[saml_artifact] = None 
-    self.login_request_ids[saml_artifact] = None 
+    self.recipients[saml_artifact] = None
+    self.login_request_ids[saml_artifact] = None
     rand_id = self.getrandom_samlID()
     rand_id_assert = self.getrandom_samlID()
 
@@ -577,196 +466,168 @@ class AuthN(object):
       log('artifact_service login_req_id %s' %(login_req_id))
 
     five_sec_from_now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+5) )
+    resp_rand_id = self.getrandom_samlID()
+
+    saml_response = self._generate_response(now, five_sec_from_now, username,
+                                            login_req_id, current_recipient,
+                                            saml_oissuer, False)
     # Writeup the ArtifactResponse and set the username back
     #along with the ID sent to it (i.e, the saml_id).
     response = ('<SOAP-ENV:Envelope '
                 'xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">'
                 '<SOAP-ENV:Body>'
-      	        '<samlp:ArtifactResponse '
+                '<samlp:ArtifactResponse '
                 'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
                 'xmlns="urn:oasis:names:tc:SAML:2.0:assertion" '
                 'ID="%s" Version="2.0" InResponseTo="%s" IssueInstant="%s"> '
                 '<Issuer>%s</Issuer>'
-		'<samlp:Status>'
-		'<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
-                '</samlp:Status>'
-		'<samlp:Response ID="%s" Version="2.0" IssueInstant="%s">'
                 '<samlp:Status>'
-                '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>' 
+                '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
                 '</samlp:Status>'
-                '<Assertion Version="2.0" ID="%s" IssueInstant="%s">'
-                '<Issuer>%s</Issuer>'
-                '<Subject>'
-                '<NameID>%s</NameID>'
-                '<SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">'
-                '<SubjectConfirmationData InResponseTo="%s" Recipient="%s" NotOnOrAfter="%s"/>'
-                '</SubjectConfirmation>'
-		'</Subject>'
-                '<Conditions NotBefore="%s" NotOnOrAfter="%s">'
-                '<AudienceRestriction>'
-                '<Audience>%s</Audience>'
-                '</AudienceRestriction>'
-                '</Conditions>'
-                '<AuthnStatement AuthnInstant="%s" SessionIndex="%s">'
-                '<AuthnContext>'
-                '<AuthnContextClassRef>'
-                'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'
-                '</AuthnContextClassRef>'
-                '</AuthnContext>'
-                '</AuthnStatement>'
-                '</Assertion>'
-                '</samlp:Response>'
+                '%s'
                 '</samlp:ArtifactResponse>'
                 '</SOAP-ENV:Body>'
-                '</SOAP-ENV:Envelope>' % (rand_id, saml_id,now,
-                                          self.saml_issuer, saml_id,now,
-                                          rand_id_assert, now,
-                                          self.saml_issuer, username, 
-                                          login_req_id,  current_recipient, five_sec_from_now,
-			    		  now, five_sec_from_now, saml_oissuer,
- 					  now, rand_id_assert))
-
+                '</SOAP-ENV:Envelope>') % (rand_id, saml_id, now,
+                                           self.saml_issuer, saml_response)
     if self.debug_flag:
       xmldoc = xml.dom.minidom.parseString(response)
       log('artifact_service response %s' %(xmldoc.toprettyxml()))
-      log('-----------  ARTIFACT END   -----------')
-
+    log('-----------  ARTIFACT END   -----------')
     return response
   artifact_service.exposed = True
 
-  # The SAML Authorization service (/authz) called by the GSA to query to see 
-  # if individual URLs are authorized for a given user. Both the username 
-  # and the URL to check for is passed in
+  def _generate_response(self, now, later, username, login_req_id, recipient, audience, signed):
+    resp_rand_id = self.getrandom_samlID()
+    rand_id_assert = self.getrandom_samlID()
+    sigtmpl = ''
+    if signed:
+      # if the response is to be signed, create a signature template
+      sigtmpl = ('<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">'
+                 '<ds:SignedInfo>'
+                 '<ds:CanonicalizationMethod '
+                 'Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />'
+                 '<ds:SignatureMethod '
+                 'Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1" />'
+                 '<ds:Reference URI="#%s">'
+                 '<ds:Transforms>'
+                 '<ds:Transform Algorithm='
+                 '"http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>'
+                 '</ds:Transforms>'
+                 '<ds:DigestMethod Algorithm='
+                 '"http://www.w3.org/2000/09/xmldsig#sha1" />'
+                 '<ds:DigestValue></ds:DigestValue>'
+                 '</ds:Reference>'
+                 '</ds:SignedInfo>'
+                 '<ds:SignatureValue/>'
+                 '<ds:KeyInfo>'
+                 '<ds:KeyName/>'
+                 '</ds:KeyInfo>'
+                 '</ds:Signature>') % resp_rand_id
+    resp = ('<samlp:Response '
+            'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
+            'xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" '
+            'ID="%s" Version="2.0" IssueInstant="%s" Destination="%s">'
+            '<saml:Issuer>%s</saml:Issuer>'
+            '<samlp:Status>'
+            '<samlp:StatusCode '
+            'Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
+            '</samlp:Status>'
+            '<saml:Assertion '
+            'Version="2.0" ID="%s" IssueInstant="%s">'
+            '<saml:Issuer>%s</saml:Issuer>'
+            '<saml:Subject>'
+            '<saml:NameID>%s</saml:NameID>'
+            '<saml:SubjectConfirmation '
+            'Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">'
+            '<saml:SubjectConfirmationData '
+            'InResponseTo="%s" Recipient="%s" NotOnOrAfter="%s"/>'
+            '</saml:SubjectConfirmation>'
+            '</saml:Subject>'
+            '<saml:Conditions NotBefore="%s" NotOnOrAfter="%s">'
+            '<saml:AudienceRestriction>'
+            '<saml:Audience>%s</saml:Audience>'
+            '</saml:AudienceRestriction>'
+            '</saml:Conditions>'
+            '<saml:AuthnStatement AuthnInstant="%s" SessionIndex="%s">'
+            '<saml:AuthnContext>'
+            '<saml:AuthnContextClassRef>'
+            'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'
+            '</saml:AuthnContextClassRef>'
+            '</saml:AuthnContext>'
+            '</saml:AuthnStatement>'
+            '</saml:Assertion>'
+            '%s'
+            '</samlp:Response>') % (resp_rand_id, now, recipient,
+                                    self.saml_issuer, rand_id_assert, now,
+                                    self.saml_issuer, username,
+                                    login_req_id, recipient, later,
+                                    now, later, audience,
+                                    now, rand_id_assert, sigtmpl)
+    if signed:
+      # hack DTD that lets xmlsec know the ID field name (pyxmlsec doesn't have
+      # a method that lets us specify this)
+      resp = '<!DOCTYPE samlp:Response [<!ATTLIST samlp:Response ID ID #IMPLIED>]>' + resp
+      return self._signXML(resp)
+    return resp
 
-  def authz(self):
+  def _signXML(self, xml):
+    import libxml2
+    import xmlsec
+    dsigctx = None
+    doc = None
+    try:
+      # initialization
+      libxml2.initParser()
+      libxml2.substituteEntitiesDefault(1)
+      if xmlsec.init() < 0:
+        raise SignatureError('xmlsec init failed')
+      if xmlsec.checkVersion() != 1:
+        raise SignatureError('incompatible xmlsec library version %s' %
+                             str(xmlsec.checkVersion()))
+      if xmlsec.cryptoAppInit(None) < 0:
+        raise SignatureError('crypto initialization failed')
+      if xmlsec.cryptoInit() < 0:
+        raise SignatureError('xmlsec-crypto initialization failed')
 
-    authz_request = cherrypy.request.body.read()
-    xmldoc = xml.dom.minidom.parseString(authz_request)
+      # load the input
+      doc = libxml2.parseDoc(xml)
+      if not doc or not doc.getRootElement():
+        raise SignatureError('error parsing input xml')
+      node = xmlsec.findNode(doc.getRootElement(), xmlsec.NodeSignature,
+                             xmlsec.DSigNs)
+      if not node:
+        raise SignatureError("couldn't find root node")
 
-    if self.debug_flag:
-      log('-----------  AUTHZ BEGIN  -----------')
-      log('AUTHZ Request: %s' % xmldoc.toprettyxml())
-      
-    now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-    # The request should look something like
-    #    request = ("<soapenv:Envelope xmlns:soapenv=\
-    #        "http://schemas.xmlsoap.org/soap/envelope/\"
-    #               "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"
-    #               "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
-    #               "<soapenv:Body>"
-    #               "<samlp:AuthzDecisionQuery ID=
-    #                    \"dbppegngllhegcobmfponljblmfhjjiglbkbmmco\"
-    #               "IssueInstant=\"2008-07-09T15:22:55Z\""
-    #               "Resource=\"secure.yourdomain.com/protected/page2.html\"
-    #                        Version=\"2.0\"
-    #               "xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\""
-    #               "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\">"
-    #               "<saml:Issuer>google.com</saml:Issuer>"
-    #               "<saml:Subject>"
-    #               "<saml:NameID>user1</saml:NameID>"
-    #               "</saml:Subject>"
-    #               "<saml:Action Namespace=\"urn:oasis:names:tc:SAML:1.0:
-    #                        action:ghpp\">GET</saml:Action>"
-    #               "</samlp:AuthzDecisionQuery>"
-    #               "<samlp:AuthzDecisionQuery ID=
-    #                    \"eeppegngllhegcobmfabcnljblmfhrrniglbkbeed\"
-    #               "IssueInstant=\"2008-07-09T15:22:55Z\""
-    #               "Resource=\"secure.yourdomain.com/protected/page3.html\"
-    #                        Version=\"2.0\"
-    #               "xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\""
-    #               "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\">"
-    #               "<saml:Issuer>google.com</saml:Issuer>"
-    #               "<saml:Subject>"
-    #               "<saml:NameID>user1</saml:NameID>"
-    #               "</saml:Subject>"
-    #               "<saml:Action Namespace=\"urn:oasis:names:tc:SAML:1.0:
-    #                        action:ghpp\">GET</saml:Action>"
-    #               "</samlp:AuthzDecisionQuery>"    
-    #               "</soapenv:Body>"
-    #               "</soapenv:Envelope>")
+      # load the private key
+      dsigctx = xmlsec.DSigCtx()
+      key = xmlsec.cryptoAppKeyLoad(self.key_file, xmlsec.KeyDataFormatPem,
+                                    self.key_pwd, None, None)
+      if not key:
+        raise SignatureError('failed to load the private key %s' % self.key_file)
+      dsigctx.signKey = key
+      if key.setName(self.key_file) < 0:
+        raise SignatureError('failed to set key name')
 
-    saml_id = None
-    resource = None
-    username = None
+      # sign
+      if dsigctx.sign(node) < 0:
+        raise SignatureError('signing failed')
+      signed_xml = doc.serialize()
 
-    # parse out the SAML AuthzRequest
-    # If we don't know *for sure* if a user is allowed or not, send back an
-    # indeterminate.  if the URL does *not* exist in the built in self.authz_db,
-    # then we don't know if the user is allowed
-    # or not for sure, then send back an Indeterminate.
+    finally:
+      if dsigctx:
+        dsigctx.destroy()
+      if doc:
+        doc.freeDoc()
+      xmlsec.cryptoShutdown()
+      xmlsec.cryptoAppShutdown()
+      xmlsec.shutdown()
+      libxml2.cleanupParser()
 
-    # GSA 6.0+ can request batch authorization where there can be multiple
-    # samlp:AuthzDecisionQuery  in one request for several URLs
-    # which means we have to responde back in one response for each request.
-     
-    # If we're using the internal authz system, parse out the inbound
-    # request for the URI and use that to check against the local authz db
+    return signed_xml
 
-    samlp = xmldoc.getElementsByTagName('samlp:AuthzDecisionQuery')
-
-    response = ('<soapenv:Envelope '
-                'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-                '<soapenv:Body>')   
- 
-    for node in samlp:
-      if (node.nodeName == "samlp:AuthzDecisionQuery"):
-        saml_id = node.attributes["ID"].value
-        resource = node.attributes["Resource"].value
-        samlName = node.getElementsByTagName("saml:NameID")
-        for n_issuer in samlName:
-          cnode= n_issuer.childNodes[0]
-          if cnode.nodeType == node.TEXT_NODE:
-            username = cnode.nodeValue
-        # the SAML response and assertion are unique random ID numbers
-        # back in the sring with the decision.        
-        rand_id_saml_resp = self.getrandom_samlID()
-        rand_id_saml_assert = self.getrandom_samlID() 
-
-        decision = None
-
-        if (self.use_fqdn_hosts == False):
-          uri_loc = resource.find("/secure?page=");
-          lresource = resource[uri_loc:uri_loc+30]
-          decision = self.checkauthz(username, lresource)
-        else:
-          decision = self.checkauthz(username, resource)
-
-        if self.debug_flag:
-          log ('authz ID: %s' %(saml_id))
-          log ('authz Resource: %s' %(resource))
-          log ('authz samlName %s' %(username))
-          log ('authz decision for resource %s [%s]' % (resource, decision))
-
-        response = response + ('<samlp:Response '
-             'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
-             'xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" '
-             'ID="%s" Version="2.0" IssueInstant="%s">'
-             '<samlp:Status><samlp:StatusCode '
-             'Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
-             '</samlp:Status><saml:Assertion Version="2.0" '
-             'ID="%s" IssueInstant="%s">'
-             '<saml:Issuer>%s</saml:Issuer><saml:Subject>'
-             '<saml:NameID>%s</saml:NameID></saml:Subject>'
-             '<saml:AuthzDecisionStatement Resource="%s" '
-             'Decision="%s"><saml:Action '
-             'Namespace="urn:oasis:names:tc:SAML:1.0:action:ghpp">'
-             'GET</saml:Action></saml:AuthzDecisionStatement>'
-             '</saml:Assertion></samlp:Response>') % (rand_id_saml_resp,now, 
-                                                      rand_id_saml_assert, 
-                                                      now, self.saml_issuer, username,
-                                                      escape(resource), decision)
-
-    response = response + '</soapenv:Body></soapenv:Envelope>'    
-
-    if self.debug_flag:
-      xmldoc = xml.dom.minidom.parseString(response)
-      log('authz response %s' %(xmldoc.toprettyxml()))
-      log('-----------  AUTHZ END  -----------')
-    return response
-  authz.exposed = True
 
 def log(msg):
-  print ('%s %s') % (datetime.datetime.now(), msg)  
+  print ('[%s] %s') % (datetime.datetime.now(), msg)
 
 # Utility routintes to base64 encode/decode and inflate/deflate
 # pg 16-17:
@@ -784,43 +645,48 @@ def deflate_and_base64_encode(string_val):
   return base64.b64encode(compressed_string)
 
 
-# **********************  START MAIN
+# -------
+# Main
+# -------------
 
-def main(argv):
-  pass
-
-if __name__ == '__main__':
+def main():
   # Default listen port
   cherrypy.server.socket_port = 28080
-  cherrypy.server.socket_host = '0.0.0.0'
+  cherrypy.server.socket_host =  '0.0.0.0'
   protocol = "http"
   debug_flag = False
-  consumer_mech = "referer"
-  use_fqdn_hosts = False
+  consumer_mech = "saml"
   saml_issuer = "authn.py"
+  gsa_host = None
+  binding = "artifact"
+  key_file = None
+  key_pwd = None
+
+  def usage():
+    print ('\nUsage: authn.py --debug --use_ssl '
+           '--port=<port> --consumer_mech=(saml|static) '
+           '--saml_issuer=<issuer> --gsa_host=<gsa_host> '
+           '--binding=(artifact|post) --key_file=<key_file> --key_blank_pwd\n')
+
   try:
     opts, args = getopt.getopt(sys.argv[1:], None,
-                               ["debug", "use_fqdn_hosts", "use_ssl", "port=",
-                                "consumer_mech=", "saml_issuer="])
+                               ["debug", "use_ssl", "port=",
+                                "consumer_mech=", "saml_issuer=", "gsa_host=",
+                                "binding=", "key_file=", "key_blank_pwd"])
   except getopt.GetoptError:
-    print ('Invalid arguments: valid args --debug --use_fqdn_hosts --use_ssl '
-           '--port=<port> --consumer_mech=(saml|referer|static) '
-           '--saml_issuer=<issuer>')
+    usage()
     sys.exit(1)
-  cherrypy.config.update({'global':{'log.screen': False}})   
+
+  cherrypy.config.update({'global':{'log.screen': False}})
   for opt, arg in opts:
     if opt == "--debug":
       debug_flag = True
-      cherrypy.config.update({'global':{'log.screen': True}})                  
-    if opt == "--use_fqdn_hosts":
-      use_fqdn_hosts = True
+      cherrypy.config.update({'global':{'log.screen': True}})
     if opt == "--consumer_mech":
-      if arg == "saml":
-        consumer_mech = "saml"
-      elif arg == "static":
+      if arg == "static":
         consumer_mech = "static"
-      else:
-        consumer_mech = "referer"
+    if opt == "--gsa_host":
+      gsa_host = arg
     if opt == "--saml_issuer":
       saml_issuer = arg
     if opt == "--use_ssl":
@@ -831,6 +697,40 @@ if __name__ == '__main__':
     if opt == "--port":
       port = int(arg)
       cherrypy.config.update({"global": {"server.socket_port": port}})
-      
-cherrypy.quickstart(AuthN(protocol, debug_flag, use_fqdn_hosts, consumer_mech,
-                          saml_issuer))
+    if opt == "--binding":
+      binding = arg
+    if opt == "--key_file":
+      key_file = arg
+    if opt == "--key_blank_pwd":
+      key_pwd = ''
+
+  if consumer_mech == "static":
+    if gsa_host is None:
+      log ("Please specify --gsa_host option for consumer_mech=static")
+      usage()
+      sys.exit(1)
+  else:
+    log ("ignoring gsa_host")
+    gsa_host = None
+
+  if binding == 'post':
+    try:
+      import libxml2
+      import xmlsec
+    except ImportError:
+      log('POST binding is being used, but the Python bindings for libxml2 and'
+          'xmlsec are not both available.')
+      sys.exit(1)
+    if not key_file:
+      log('No private key specified to use for POST binding.')
+      usage()
+      sys.exit(1)
+    elif key_pwd is None:
+      key_pwd = getpass.getpass('Password for %s: ' % key_file)
+
+  cherrypy.quickstart(AuthN(cherrypy.server.socket_port, protocol, debug_flag,
+                            consumer_mech, saml_issuer, gsa_host, binding,
+                            key_file, key_pwd))
+
+if __name__ == '__main__':
+  main()
