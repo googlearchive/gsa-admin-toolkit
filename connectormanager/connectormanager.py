@@ -561,17 +561,18 @@ class ConnectorManager(object):
 
   def _savePropFile(self):
     self.logger().debug('Saving Prop file ')
-    str_out = '<connectormanager><connectors><gsa>%s</gsa>\n' % self.gsa
+    str_out = '<connectormanager><connectors><gsa>%s</gsa>' % self.gsa
     for c in self.connector_list:
       config = base64.encodestring(c.getConfig())
       schedule = base64.encodestring(c.getSchedule())
       data = base64.encodestring(cPickle.dumps(c.getData(), 2))
       str_out += ('<connector><name>%s</name><type>%s</type>'
                   '<config>%s</config><schedule>%s</schedule>'
-                  '<data>%s</data></connector>\n') % (
+                  '<data>%s</data></connector>') % (
                       c.getName(), c.CONNECTOR_TYPE, config,
                       schedule, data)
-    str_out += '</connectors></connectormanager>\n'
+    str_out += '</connectors></connectormanager>'
+    str_out = xml.dom.minidom.parseString(str_out).toprettyxml()
     try:
       out_file = open(self.configfile, 'w')
       out_file.write(str_out)
@@ -593,7 +594,7 @@ class ConnectorManager(object):
       m_node = xmldoc.getElementsByTagName('gsa')
       try:
         for rnode in m_node:
-          cgsa = rnode.childNodes[0].nodeValue
+          cgsa = rnode.childNodes[0].nodeValue.strip()
         if self.gsa == '':
           self.gsa = cgsa
       except IndexError:
@@ -603,17 +604,18 @@ class ConnectorManager(object):
       for rnode in m_node:
         rchild = rnode.childNodes
         for nodes in rchild:
+          if nodes.childNodes:
+            val = nodes.childNodes[0].nodeValue.strip()
           if nodes.nodeName == 'name':
-            name = nodes.childNodes[0].nodeValue
+            name = val
           if nodes.nodeName == 'type':
-            type = nodes.childNodes[0].nodeValue
+            type = val
           if nodes.nodeName == 'config':
-            config = base64.decodestring(nodes.childNodes[0].nodeValue)
+            config = base64.decodestring(val)
           if nodes.nodeName == 'schedule':
-            schedule = base64.decodestring(nodes.childNodes[0].nodeValue)
+            schedule = base64.decodestring(val)
           if nodes.nodeName == 'data':
-            data = cPickle.loads(
-                       base64.decodestring(nodes.childNodes[0].nodeValue))
+            data = cPickle.loads(base64.decodestring(val))
         if type not in self.connector_classes:
           print 'Connector type %s not loaded' % type
           sys.exit(1)
