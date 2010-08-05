@@ -137,6 +137,19 @@ class ConnectorManager(object):
   connector_list = []
   loggers = {}
 
+  class ConnectorPool(cherrypy.process.plugins.SimplePlugin):
+    """CherryPy engine plugin for starting/stopping connectors."""
+
+    def __init__(self, bus, connector_manager):
+      cherrypy.process.plugins.SimplePlugin.__init__(self, bus)
+      self.connector_manager = connector_manager
+
+    def start(self):
+      self.connector_manager.startConnectors()
+
+    def stop(self):
+      self.connector_manager.stopConnectors()
+
   def __init__(self, connector_classes, debug_flag, use_ssl, port):
     self.debug_flag = debug_flag
     cherrypy.config.update({'global': {'server.socket_host': '0.0.0.0'}})
@@ -150,11 +163,17 @@ class ConnectorManager(object):
     else:
       cherrypy.config.update({'global': {'log.screen': False}})
     cherrypy.config.update({'global': {'server.socket_port': port}})
+    connector_pool = self.ConnectorPool(cherrypy.engine, self)
+    connector_pool.subscribe()
+    cherrypy.quickstart(self, script_name='/')
+
+  def startConnectors(self):
     self._loadPropFile()
     for c in self.connector_list:
       self.logger().info('Starting connector: ' + c.getName())
       c.startConnector()
-    cherrypy.quickstart(self, script_name='/')
+
+  def stopConnectors(self):
     for c in self.connector_list:
       self.logger().info('Stopping connector: ' + c.getName())
       c.stopConnector()
