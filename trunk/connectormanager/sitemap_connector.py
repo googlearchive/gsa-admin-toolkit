@@ -59,55 +59,31 @@ class SitemapConnector(connector.TimedConnector):
     i = 0
     feed_type = 'metadata-and-url'
     #feed_type = 'incremental'
-    feed_parts = []
+    feed = connector.Feed(feed_type)
     for url in sitemap_urls:
-      strrecord = ''
       if feed_type == 'metadata-and-url':
-        strrecord = ('<record url="%s"  displayurl="%s"  action="add" '
-                     'mimetype="text/html">'
-                     '<metadata>'
-                     '<meta name="google:action" content="add"/>'
-                     '<meta name="google:ispublic" content="true"/>'
-                     '<meta name="google:mimetype" content="text/html"/>'
-                     '<meta name="text/html" content="text/html"/>'
-                     '<meta name="metadataname" content="metadatavalue"/>'
-                     '</metadata>'
-                     '</record>') %(url, url)
-      if feed_type == 'incremental':
-        #now for the sitemap connecotr, download the content directly
-        #req = Request(url)
-        #response = urlopen(req)
-        #content = response.read()
-        content = 'python connector feed content  for %s' %url
-        strrecord = ('<record url="googleconnector://%s.localhost/doc?docid=%s" '
-                     'displayurl="googleconnector://%s.localhost/doc?docid=%s" '
-                     'action="add" mimetype="text/html" authmethod="ntlm">'
-                     '<metadata>'
-                     '<meta name="google:action" content="add"/>'
-                     '<meta name="google:ispublic" content="false"/>'
-                     '<meta name="google:mimetype" content="text/html"/>'
-                     '<meta name="text/html" content="text/html"/>'
-                     '<meta name="metadataname" content="metadatavalue"/>'
-                     '</metadata>'
-                     '<content encoding="base64binary">%s</content>'
-                     '</record>') %(self.name, url, self.name, url,
-                                    base64.encodestring(content))
+        feed.addRecord(url=url, displayurl=url, action='add',
+                       mimetype='text/html')
+      else:
+        content = urllib2.urlopen(url).read()
+        feed.addRecord(url=url, displayurl=url, action='add',
+                       mimetype='text/html', content=content)
       feed_parts.append(strrecord)
       #if the number of urls were going to send to the GSA right now is more
       #than what its expecting, send what we have now and reset the counter
       #afer waiting 1 min (this is the poormans traversal rate limit delay)
       if i >= float(self.getLoad()):
         print('Posting %s URLs to the GSA for connector [%s]' %(i, self.name))
-        self.pushToGSA(''.join(feed_parts), feed_type)
-        feed_parts = []
+        self.pushFeed(feed)
+        feed.clear()
         i = 0
         time.sleep(60)
       else:
         i = i+1
     if i>0:
       print ('Final posting %s URLs to the GSA for connector [%s]' %(i, self.name))
-      self.pushToGSA(''.join(feed_parts), feed_type)
-      feed_parts = []
+      self.pushFeed(feed)
+      feed.clear()
 
     # just for demonstration--store the current time of the run
     self.setData(datetime.datetime.now())
