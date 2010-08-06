@@ -37,9 +37,13 @@ class URLConnector(connector.TimedConnector):
     self.setInterval(int(self.getConfigParam('delay')))
 
   def run(self):
+    # fetch the contents of the URL
     url = self.getConfigParam('url')
     req = urllib2.Request(url)
     response = urllib2.urlopen(req)
     content = response.read()
-    self.sendContentFeed(url=url, action='add', mimetype='text/html',
-                         content=content)
+
+    # push it to the GSA as a content feed
+    feed = connector.Feed('incremental')
+    feed.addRecord(url=url, action='add', mimetype='text/html', content=content)
+    self.pushFeed(feed)

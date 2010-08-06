@@ -330,13 +330,13 @@ class Connector(object):
           return node.childNodes[0].nodeValue
     return None
 
-  def pushToGSA(self, data, feed_type):
-    """Pushes a feed to the GSA.
+  def pushRaw(self, data, feed_type):
+    """Pushes a feed (as raw XML) to the GSA.
 
     Args:
       data: The XML string to send to the GSA. This may be a hassle to
-        generate; methods such as sendContentFeed are much simpler to use if
-        they apply to the situation well enough.
+        generate; using pushFeed with a Feed object is the preferred over
+        using this method by itself.
       feed_type: The feed type string. Can be 'incremental', 'full', or
         'metadata-and-xml'.
 
@@ -396,118 +396,30 @@ class Connector(object):
     self.logger().debug("Response status from GSA [%s]" % status)
     return status
 
-  def generateFeedRecord(self, attrs, metadata, content):
-    """Generates a <record> element for a feed.
+  def pushFeed(self, feed):
+    """Pushes a feed (as a Feed object) to the GSA.
 
     Args:
-      attrs: The attributes for the record tag, as a dictionary that maps
-        attribute names (strings) to their values (strings). Example:
-        {'url': 'http://example.com/index.html',
-         'displayurl': 'http://example.com/index.html',
-         'action': 'add',
-         'mimetype': 'text/html'}
-        Note that the 'url' and 'mimetype' attributes are required by the GSA.
-      metadata: Metadata tags to add to the feed (can be None if not needed).
-        Should be a dictionary that maps strings to strings.
-      content: Adds a content tag for content feeds. Should be a string, or None
-       if this is not to be a content feed.
+      feed: A Feed object.
 
     Returns:
-      The constructed record XML element (string).
+      The GSA response string.
     """
-    # generate the record attrib list string
-    attrlist = []
-    for key, value in attrs.iteritems():
-      attrlist.append('%s="%s"' % (key, value))
-    attrstr = ' '.join(attrlist)
-    # generate metadata tags
-    metastr = ''
-    if metadata:
-      metalist = []
-      for key, value in metadata.iteritems():
-        metalist.append('<meta name="%s" content="%s"/>' % (key, value))
-      metastr = '<metadata>%s</metadata>' % ''.join(metalist)
-    # generate content tag
-    contentstr = ''
-    if content:
-      contentstr = ('<content encoding="base64binary">'
-                    '%s'
-                    '</content>') % base64.encodestring(content)
-    return '<record %s>%s%s</record>' % (attrstr, metastr, contentstr)
+    return self.pushRaw(feed.toXML(), feed.getType())
 
-  def sendMultiMetadataAndURLFeed(self, records):
-    """Sends a metadata-and-url feed to the GSA, containing multiple records.
+  def pushFeedSingleRecord(self, feed_type, **attrs):
+    """Pushes a feed with a single record to the GSA.
 
     Args:
-      records: A list of tuples of metadata dictionaries and attribute
-        dictionaries. For example:
-        [
-          ({'url': 'http://example.com/index.hml', 'mimetype': 'text/html'},
-           {'meta1': 'test', 'meta2': 'test'}),
-          ( etc... )
-        ]
-        Note that the 'url' and 'mimetype' attrs are required by the GSA.
+      feed_type: The feed type. See the constructor for Feed.
+      **attrs: Other args. See Feed.addRecord.
 
     Returns:
       The GSA response string.
     """
-    parts = [self.generateFeedRecord(attrs, metadata, None)
-             for metadata, attrs in records]
-    return self.pushToGSA(''.join(parts), 'metadata-and-url')
-
-  def sendMetadataAndURLFeed(self, metadata, **attrs):
-    """Sends a metadata-and-url feed to the GSA, containing a single record.
-
-    This is a convenience wrapper around sendMultiMetadataAndURLFeed.
-    Note that the fields 'url' and 'mimetype' are required.
-    Example usage: sendMetadataAndURLFeed(url='http://...', action='add',
-                                          mimetype='text/html',
-                                          metadata={...})
-
-    Returns:
-      The GSA response string.
-    """
-    return self.sendMultiMetadataAndURLFeed([(metadata, attrs)])
-
-  def sendMultiContentFeed(self, records, feed_type='incremental'):
-    """Sends a content feed to the GSA, containing multiple records.
-
-    Args:
-      records: A list of tuples of content data and dictionaries of record
-        attributes. For example:
-        [
-          ('[some html string]', {
-              'url': 'http://example.com/index.html',
-              'displayurl': 'http://example.com/index.html',
-              'action': 'add',
-              'mimetype': 'text/html'
-          }),
-          ('[some more html]', { 'url': 'http://blah', etc. })
-        ]
-        Note that the fields 'url' and 'mimetype' are required by the GSA.
-      feed_type: The feed type as a string, either 'incremental' or 'full'. The
-        default value is 'incremental'.
-
-    Returns:
-      The GSA response string.
-    """
-    parts = [self.generateFeedRecord(attrs, None, content)
-             for content, attrs in records]
-    return self.pushToGSA(''.join(parts), feed_type)
-
-  def sendContentFeed(self, content, **attrs):
-    """Sends a content feed to the GSA, containing only one record.
-
-    This is a convenience wrapper around sendMultiContentFeed.
-    Note that the fields 'url', 'mimetype', and 'content' are required.
-    Example usage: sendContentFeed(url='http://...', action='add',
-                                   mimetype='text/html',
-                                   content='<some html>')
-
-    Returns:
-      The GSA response string.
-    """
-    return self.sendMultiContentFeed([(content, attrs)])
+    feed = Feed(feed_type)
+    feed.addRecord(attrs)
+    return self.pushFeed(feed)
 
   def logger(self):
     """Returns this connector's logger.
@@ -580,3 +492,122 @@ class TimedConnector(Connector):
       interval: The timer interval in seconds, as a float or int.
     """
     self._interval = interval
+
+
+class Feed(object):
+  """A set of records to be placed in an XML feed.
+
+  Note: The name of the class may be a little misleading. This class does not
+  represent a feed in its entirety, just a feed's records. That is, when toXML
+  is called, a series of <record>...</record><record>...</record> elements is
+  produced, not a complete <gsafeed>...</gsafeed> element.
+  """
+
+  def __init__(self, feedtype):
+    """Creates the feed.
+
+    Args:
+      feedtype: The feed type. Must be a string, either 'incremental', 'full',
+      or 'metadata-and-url'.
+    """
+    self._type = feedtype
+    self._records = []
+
+  def _generateRecordElement(self, attrs, metadata, content):
+    """Generates a <record> element for a record.
+
+    Args:
+      attrs: The attributes for the record tag, as a dictionary that maps
+        attribute names (strings) to their values (strings). Example:
+        {'url': 'http://example.com/index.html',
+         'displayurl': 'http://example.com/index.html',
+         'action': 'add',
+         'mimetype': 'text/html'}
+        Note that the 'url' and 'mimetype' attributes are required by the GSA.
+      metadata: Metadata tags to add to the feed (can be None if not needed).
+        Should be a dictionary that maps strings to strings.
+      content: Adds a content tag for content feeds. Should be a string, or None
+       if this is not to be a content feed.
+
+    Returns:
+      The constructed record XML element (string).
+    """
+    # generate the record attrib list string
+    attrlist = []
+    for key, value in attrs.iteritems():
+      attrlist.append('%s="%s"' % (key, value))
+    attrstr = ' '.join(attrlist)
+    # generate metadata tags
+    metastr = ''
+    if metadata:
+      metalist = []
+      for key, value in metadata.iteritems():
+        metalist.append('<meta name="%s" content="%s"/>' % (key, value))
+      metastr = '<metadata>%s</metadata>' % ''.join(metalist)
+    # generate content tag
+    contentstr = ''
+    if content:
+      contentstr = ('<content encoding="base64binary">'
+                    '%s'
+                    '</content>') % base64.encodestring(content)
+    return '<record %s>%s%s</record>' % (attrstr, metastr, contentstr)
+
+  def addRecord(self, **kwargs):
+    """Adds a record to the feed.
+
+    Args:
+      url, displayurl, mimetype, etc.: Attributes for the record tag, to be
+        provided as needed (should be strings). The GSA requires the url and
+        metadata arguments to be provided. See
+        http://code.google.com/apis/searchappliance/
+            documentation/64/feedsguide.html#defining_the_xml
+        for a full list of record tag attributes.
+      metadata: Optional. Metadata tags to add to the feed, as a dictionary
+        that maps strings to strings.
+      content: Optional; required if the feed is a content feed. Adds a content
+        tag to the record. Should be a string.
+
+    Example:
+      addRecord(url='http://example.com/index.html', action='add',
+                mimetype='text/html', content='<html>...</html>')
+      This adds a record to a content feed, with the record element attributes
+      'url', 'action', and 'mimetype'. A <content> element is also added.
+      The following XML will be produced by toXML for this record:
+      <record url='http://example.com/index.html' action='add'
+              mimetype='text/html'>
+        <content encoding="base64binary">
+          ... the base64-encoded version of the content ...
+        </content>
+      </record>
+    """
+    content = None
+    if 'content' in kwargs:
+      content = kwargs['content']
+      del kwargs['content']
+    metadata = None
+    if 'metadata' in kwargs:
+      metadata = kwargs['metdata']
+      del kwargs['metdata']
+    self._records.append((kwargs, metadata, content))
+
+  def toXML(self):
+    """Returns the XML version of all the records added.
+    Like this: <record>...</record><record>...</record>...
+
+    Returns:
+      A string of XML.
+    """
+    return ''.join(self._generateRecordElement(rec[0], rec[1], rec[2])
+                   for rec in self._records)
+
+  def getType(self):
+    """Returns the connector type.
+
+    Returns:
+      The connector type (string).
+    """
+    return self._type
+
+  def clear(self):
+    """Clears the list of records."""
+    self._records = []
