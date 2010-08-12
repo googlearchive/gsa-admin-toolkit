@@ -17,12 +17,22 @@
 # This code is not supported by Google
 #
 
+__author__ = "salrashid123@gmail.com for Google"
+__author__ = "jonathanho@google.com (Jonathan Ho)"
+
 import connector
 import datetime
 import urllib2
 import xml.dom.minidom
 
+
 class SitemapConnector(connector.TimedConnector):
+  """A connector that crawls a site given a sitemap.xml file.
+
+  Downloads the given sitemap.xml file, parses out the URLs inside, and then
+  sends those URLs as either metadata-and-url or content feeds.
+  """
+
   CONNECTOR_TYPE = 'sitemap-connector'
   CONNECTOR_CONFIG = {
       'surl': { 'type': 'text', 'label': 'Sitemap URL' },
@@ -73,7 +83,8 @@ class SitemapConnector(connector.TimedConnector):
       #than what its expecting, send what we have now and reset the counter
       #afer waiting 1 min (this is the poormans traversal rate limit delay)
       if i >= float(self.getLoad()):
-        print('Posting %s URLs to the GSA for connector [%s]' %(i, self.name))
+        self.logger().debug('Posting %s URLs to the GSA for connector [%s]' % (
+            i, self.name))
         self.pushFeed(feed)
         feed.clear()
         i = 0
@@ -81,9 +92,7 @@ class SitemapConnector(connector.TimedConnector):
       else:
         i = i+1
     if i>0:
-      print ('Final posting %s URLs to the GSA for connector [%s]' %(i, self.name))
+      self.logger().debug(('Final posting %s URLs to the GSA '
+                           'for connector [%s]') % (i, self.name))
       self.pushFeed(feed)
       feed.clear()
-
-    # just for demonstration--store the current time of the run
-    self.setData(datetime.datetime.now())

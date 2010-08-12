@@ -26,6 +26,7 @@ import threading
 import urllib2
 import xml.dom.minidom
 
+
 class Connector(object):
   """A connector interface to be implemented by connector classes.
 
