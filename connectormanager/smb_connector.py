@@ -49,7 +49,11 @@ class SMBConnector(connector.TimedConnector):
 
   def init(self):
     self.setInterval(int(self.getConfigParam('delay')))
-    self.smbconfig = smbcrawler.Config(['', self.getConfigParam('share')])
+    self.share = self.getConfigParam('share')
+    # smbcrawler doesn't work unless the share ends in a slash
+    if self.share[-1] != '/':
+      self.share += '/'
+    self.smbconfig = smbcrawler.Config(['', self.share])
 
   def run(self):
     # fetch all the document URLs with smbcrawler
@@ -66,7 +70,7 @@ class SMBConnector(connector.TimedConnector):
       mimetype = mimetypes.guess_type(url)[0] or 'application/octet-stream'
       # download the file to a temporary place, and read out its contents
       tmp = tempfile.NamedTemporaryFile()
-      subprocess.call(['smbclient', '//localhost/tmp/', '-N', '-c',
+      subprocess.call(['smbclient', self.share, '-N', '-c',
                        'get %s %s' % (filename, tmp.name)],
                       stdout=devnull, stderr=devnull)
       tmp.seek(0)
