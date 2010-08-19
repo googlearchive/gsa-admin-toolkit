@@ -17,7 +17,11 @@
 # This code is not supported by Google
 #
 
-"""A connector that crawls a public SMB share."""
+"""A connector that crawls a public SMB share.
+
+This connector requires smbcrawler, which is available at
+http://gsa-admin-toolkit.googlecode.com/svn/trunk/smbcrawler.py
+"""
 
 __author__ = 'jonathanho@google.com (Jonathan Ho)'
 
