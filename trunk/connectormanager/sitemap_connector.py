@@ -44,7 +44,7 @@ class SitemapConnector(connector.TimedConnector):
 
   def run(self):
   # the parameters into the 'run' method
-    self.log('TIMER INVOKED for %s ' % self.name)
+    self.logger().info('TIMER INVOKED for %s ' % self.getName())
     # now go get the sitemap.xml file itself
     u = self.getConfigParam('surl')
     req = urllib2.Request(u)
@@ -78,21 +78,19 @@ class SitemapConnector(connector.TimedConnector):
         content = urllib2.urlopen(url).read()
         feed.addRecord(url=url, displayurl=url, action='add',
                        mimetype='text/html', content=content)
-      feed_parts.append(strrecord)
       #if the number of urls were going to send to the GSA right now is more
       #than what its expecting, send what we have now and reset the counter
       #afer waiting 1 min (this is the poormans traversal rate limit delay)
       if i >= float(self.getLoad()):
         self.logger().debug('Posting %s URLs to the GSA for connector [%s]' % (
-            i, self.name))
+            i, self.getName()))
         self.pushFeed(feed)
         feed.clear()
         i = 0
-        time.sleep(60)
       else:
         i = i+1
     if i>0:
       self.logger().debug(('Final posting %s URLs to the GSA '
-                           'for connector [%s]') % (i, self.name))
+                           'for connector [%s]') % (i, self.getName()))
       self.pushFeed(feed)
       feed.clear()
