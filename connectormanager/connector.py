@@ -1,4 +1,4 @@
-#!/usr/bin/python2.4
+#!/usr/bin/python
 #
 # Copyright 2010 Google Inc. All Rights Reserved.
 #
@@ -312,6 +312,27 @@ class Connector(object):
             node.attributes["name"].value == param_name):
             return node.attributes["value"].value
     return None
+
+
+  def setConfigParam(self, param_name, param_value):
+    """Sets a specific parameter of the configuration data set.
+
+    Args:
+      param_name:  The parameter name.
+      param_value: The parameter value.
+
+    Returns: None
+    """
+    xmldoc = xml.dom.minidom.parseString(self.getConfig())
+    m_node = xmldoc.getElementsByTagName('ConnectorConfig')
+    for rnode in m_node:
+      for node in rnode.childNodes:
+        if (node.nodeName == 'Param' and
+            node.attributes["name"].value == param_name):
+            node.attributes["value"].nodeValue = param_value
+    self.setConfig(xmldoc.toxml())
+    return None
+
 
   def getScheduleParam(self, param_name):
     """Returns a specific parameter of the scheduling data set by setSchedule.
