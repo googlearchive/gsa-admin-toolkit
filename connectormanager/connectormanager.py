@@ -541,6 +541,9 @@ class ConnectorManager(object):
       if self.debug_flag:
         logger.setLevel(logging.DEBUG)
         ch.setLevel(logging.DEBUG)
+      else:
+        logger.setLevel(logging.INFO)
+        ch.setLevel(logging.INFO)
       self.loggers[src] = logger
     return self.loggers[src]
 
