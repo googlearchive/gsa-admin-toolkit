@@ -56,8 +56,8 @@ http://cbess.blogspot.com/2009/01/python-suds-with-windows-authentication.html
    1. Security for content feeds- AuthZ (use Google sharepoint services API)
    2. Use the 'GetChanges()' ListItemCollectionPositionNext for incremental changes
    3. Add additional meta-data about each doc to the feed
-   4. Hide Password field from UI
-   5. Find out how to detect deleted documents
+   4. Find out how to detect deleted documents
+   5. Exception Handling
 """
 
 import connector
@@ -78,7 +78,7 @@ class SharepointConnector(connector.TimedConnector):
       'SP_URL': { 'type': 'text', 'label': 'sharepoint url' },
       'SP_USER': { 'type': 'text', 'label': 'username' },
       'SP_DOMAIN': { 'type': 'text', 'label': 'domain' },
-      'SP_PASSWORD': { 'type': 'text', 'label': 'password' },
+      'SP_PASSWORD': { 'type': 'password', 'label': 'password' },
       'DELAY': { 'type': 'text', 'label': 'delay' },
       'SP_STATE': { 'type': 'text', 'label': 'state (b64encoded)' }
   }
