@@ -73,6 +73,8 @@ class Connector(object):
     fieldstr = ''
     if spec['type'] == 'text':
       fieldstr = '<input type="text" name="%s" value="%s" />' % (name, value)
+    if spec['type'] == 'password':
+      fieldstr = '<input type="password" name="%s" value="%s" />' %(name, value)      
     return fieldstr
 
   @classmethod
