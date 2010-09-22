@@ -25,6 +25,7 @@ traversal, this script will trigger and requery sharepoint for any documents tha
 changed since the last invocation.
 
 Prerequisite:
+  Sharepoint Services 3.0
   Python 2.6
   GSA Python ConnectorManager (http://code.google.com/p/gsa-admin-toolkit)
   CherryPy  (http://www.cherrypy.org/)
@@ -85,7 +86,7 @@ class SharepointConnector(connector.TimedConnector):
 
   def init(self):
     self.setInterval(int(self.getConfigParam('DELAY')))
-    #logging.getLogger('suds.client').setLevel(logging.DEBUG) 
+    logging.getLogger('suds.client').setLevel(logging.DEBUG) 
 
   def run(self):
     self.logger().info('TIMER INVOKED for %s ' % self.getName())
@@ -100,8 +101,6 @@ class SharepointConnector(connector.TimedConnector):
     self.SP_STATE = self.getConfigParam('SP_STATE')
   
     # go get a list of all the sites below the root:
-    # eg  http://sharepoint.esodomain.com:5456/
-    # and http://sharepoint.esodomain.com:5456/mynewsite/ 
     ntlm = WindowsHttpAuthenticated(username=self.SP_DOMAIN + '\\' + self.SP_USER , password=self.SP_PASSWORD)
     url = self.SP_URL + '/_vti_bin/Webs.asmx?WSDL'
     client = suds.client.Client(url, transport=ntlm)
@@ -114,140 +113,143 @@ class SharepointConnector(connector.TimedConnector):
       else:
         break 
    
-    # get the config param to save the last change token per site
+
+    config_state_dict ={}
+    # get the config param to save the last change token per site per document list
     last_config_state = base64.decodestring(self.SP_STATE)
     if (last_config_state == ''):
       last_config_state = '<sites></sites>'
 
     # find the current tokens saved to disk
-    config_state_dict = {}
     xmldoc = xml.dom.minidom.parseString(last_config_state)
-    site_node = xmldoc.getElementsByTagName('site')
-    for site in site_node:
-      site_name = site.attributes["name"].value
-      last_sync = site.attributes["last_sync"].value
-      config_state_dict[site_name] = last_sync
-    
-    # for each site found, get the changes  
+    xsites = xmldoc.getElementsByTagName('site')
+    for xsite in xsites:
+      site_name = xsite.attributes["name"].value
+      libraries = xsite.getElementsByTagName('library')
+      config_state_dict[site_name] = libraries
+
+    # for each site found, get the url  
     site_config = ''
     for name in sites:
-      self.logger().info('Found Site: [' + name + ' with URL: ' + sites[name] + ']')  
+      self.logger().info('Found Site ID: [' + name + ' with URL: ' + sites[name] + ']')
+      # see if the current site has its crawltokens saved to disk
       if (name in config_state_dict):
-	last_sync = config_state_dict[name]
-        self.logger().info('Calling getSiteData for [' + name + ']' + ' sync: [' + last_sync + ']') 
-        last_sync = self.getSiteData(name,sites[name],last_sync)
+        self.logger().info('Calling getSiteData for [' + name + ']') 
+        lib_dict = self.getSiteData(name,sites[name],config_state_dict[name])
       else:
-        last_sync = self.getSiteData(name,sites[name],'')
+        # no previous crawl...so start a new one
+        lib_dict = self.getSiteData(name,sites[name],None)
       #update the cofnig with the new change tokens
       # TODO:  figure out how to 'save' the new SP_STATE to the config.xml file right here
-      #        right now it just saves state when cherrypy is unloaded      
-      site_config = site_config + '<site name="' + name + '" last_sync="' + last_sync + '"/>'
+      #        right now it just saves state when cherrypy is unloaded
+      state_xml = ''
+      # for each document library in this site, add on a new entry with its crawltoken
+      for lib_entry in lib_dict:
+        state_xml = state_xml + lib_entry
+      site_config = site_config + '<site name="' + name + '">' + state_xml + '</site>'
     last_config_state = '<sites>' + site_config + '</sites>'
     self.setConfigParam('SP_STATE',base64.encodestring(last_config_state))
     self.logger().info('--------------------------------')
     self.logger().info('-----> End Traversal Run <------')
     self.logger().info('--------------------------------')   
 
-  def getSiteData(self, site_name, url_prefix, last_state):
+  def getSiteData(self, site_name, url_prefix, libraries):
 
-    self.logger().info('Running getSiteData for  site: [' + site_name  + '], DOMAIN\USERNAME [' + self.SP_DOMAIN + '\\' + self.SP_USER + ']')
- 
+    if (libraries != None):
+      self.logger().info('Running getSiteData for  site: [' + site_name  + '], for [' + str(libraries.length) + '] libraries')
+    else:
+      self.logger().info('Running Initial Traversal for  site: [' + site_name  + ']')
+
+    lib_dict = []
+
     ntlm = WindowsHttpAuthenticated(username=self.SP_DOMAIN + '\\' + self.SP_USER , password=self.SP_PASSWORD)
     url = url_prefix + '/_vti_bin/SiteData.asmx?WSDL'
     client = suds.client.Client(url, transport=ntlm)
    
     # First get the FolderID number for that site 
     resp = client.service.GetListCollection()
-    for _sList in resp.vLists._sList:
-      if _sList.Title == "Shared Documents":
-        folder_id =  _sList.InternalName
-        self.logger().info('Found Shared Documents Folder ID: ' + folder_id)
-    
-        # Now get current ChangeID parameter for this FolderID
-        # theres is some bug with suds which prevents reusing a suds.client.Client 
-        ntlm = WindowsHttpAuthenticated(username=self.SP_DOMAIN + '\\' + self.SP_USER , password=self.SP_PASSWORD)
-        client = suds.client.Client(url, transport=ntlm)
-        client.service.GetContent("SiteCollection",folder_id,'','','true','false','')
-        resp_site = client.last_received().getChild("soap:Envelope").getChild("soap:Body").getChild("GetContentResponse").getChild("GetContentResult").getText()
-        xmldoc = xml.dom.minidom.parseString(resp_site)
-        mdata = xmldoc.getElementsByTagName('Metadata')
-        changeid = mdata[0].attributes['ChangeId'].value
-        self.logger().info('Found Change ID: ' + changeid + ' for folderID [' + folder_id + ']')
+    for _sList in resp.vLists._sList:      
+      if _sList.BaseType == "DocumentLibrary":
 
+        folder_id =  _sList.InternalName
+        self.logger().info('Found [' +  _sList.Title  + '] of type [' +  _sList.BaseType + ']' + ' with Folder ID: ' + folder_id)
+    
         # get ready to refeed all the doc URLs
         feed_type = 'metadata-and-url'
         feed = connector.Feed(feed_type)
  
-        # if we don't have a previous token, traverse the entire set
-        if (last_state == ''):
-          self.logger().info('Initializing Traversal for [' + site_name + ']')
-          # then use that ID to get the document lists
-          ntlm = WindowsHttpAuthenticated(username=self.SP_DOMAIN + '\\' + self.SP_USER , password=self.SP_PASSWORD)
-          url = url_prefix + '/_vti_bin/Lists.asmx?WSDL'
-          client = suds.client.Client(url, transport=ntlm)
-      
-          # attribute used for paging
-          ListItemCollectionPositionNext = ''      
-          while (ListItemCollectionPositionNext != None):
-            query = ('<Query><OrderBy><FieldRef Name="Created" Ascending="TRUE" /></OrderBy></Query>')
-            viewfields='<ViewFields Properties="TRUE"/>'
-            # get 100 rows now per cursor... 
-            rowlimit = 100
+        last_sync = None
+
+        # See if there  is a change token for the current site
+	if (libraries != None):
+          for lib in libraries:            
+            if (lib.attributes['id'].value == folder_id):
+	      last_sync = lib.attributes['last_sync'].value
+              self.logger().info('Retrieved LastChangeToken from file [' + last_sync + ']')
+        
+        # then use that ID to get the document lists
+        ntlm = WindowsHttpAuthenticated(username=self.SP_DOMAIN + '\\' + self.SP_USER , password=self.SP_PASSWORD)
+        url = url_prefix + '/_vti_bin/Lists.asmx?WSDL'
+        client = suds.client.Client(url, transport=ntlm)
+              
+        # attribute used for paging
+        ListItemCollectionPositionNext = ''      
+        while (ListItemCollectionPositionNext != None):
+          query = ('<Query><OrderBy><FieldRef Name="Created" Ascending="TRUE" /></OrderBy></Query>')
+          viewfields='<ViewFields Properties="TRUE"/>'
+          # get 100 rows now per cursor... 
+          rowlimit = 100
+          if (ListItemCollectionPositionNext != ''):
             queryoptions = ('<QueryOptions><IncludeMandatoryColumns>true</IncludeMandatoryColumns>' +
-	     	            '<DateInUtc>TRUE</DateInUtc><ViewAttributes Scope="Recursive"/>' +
+	 	            '<DateInUtc>TRUE</DateInUtc><ViewAttributes Scope="Recursive"/>' +
 		            '<Paging ListItemCollectionPositionNext="%s"/>' + 
 		            '<OptimizeFor>ItemIds</OptimizeFor></QueryOptions>') % (escape(ListItemCollectionPositionNext))
-            client.service.GetListItemChangesSinceToken(folder_id,'',Raw(query),Raw(viewfields),rowlimit,Raw(queryoptions))
-            rsd =  client.last_received().getChild("soap:Envelope").getChild("soap:Body").getChild("GetListItemChangesSinceTokenResponse").getChild("GetListItemChangesSinceTokenResult").getChild("listitems").getChild("rs:data")
-            # extract out the cursor ListItemCollectionPositionNext
-            if (rsd.getAttribute('ListItemCollectionPositionNext') != None):
-              ListItemCollectionPositionNext = rsd.getAttribute('ListItemCollectionPositionNext').getValue()
-	      self.logger().info('Found response cursor ListItemCollectionPositionNext [' + ListItemCollectionPositionNext + ']')
+          else:
+            queryoptions = ('<QueryOptions><IncludeMandatoryColumns>true</IncludeMandatoryColumns>' +
+	 	            '<DateInUtc>TRUE</DateInUtc><ViewAttributes Scope="Recursive"/>' +
+		            '<OptimizeFor>ItemIds</OptimizeFor></QueryOptions>')
+          contains = ('<Contains><FieldRef Name="Status"/><Value Type="Text">Complete</Value></Contains>')
+
+          client.service.GetListItemChangesSinceToken(folder_id,'',Raw(query),Raw(viewfields),rowlimit,Raw(queryoptions),last_sync,Raw(contains))
+          
+          li =  client.last_received().getChild("soap:Envelope").getChild("soap:Body").getChild("GetListItemChangesSinceTokenResponse").getChild("GetListItemChangesSinceTokenResult").getChild("listitems")
+          
+          # Read the last change token from Sharepoint
+          changes = li.getChild('Changes')
+          if (changes != None):
+            if (changes.getAttribute("LastChangeToken") != None):
+              changeid = changes.getAttribute("LastChangeToken").getValue()
+              self.logger().info('Found new LastChangeToken [' + changeid + ']')
             else:
-              ListItemCollectionPositionNext = None
-            # now for each row returned, add that to the feed set
-            for zrow in rsd:
-              if zrow != None:
-                my_url =  zrow.getAttribute("ows_EncodedAbsUrl").getValue()
-                my_last_modified = zrow.getAttribute("ows_Last_x0020_Modified").getValue()
-                self.logger().debug('Found URL [' + my_url + ']')
-                # set all the attributes for this feed (TODO: set the security SPI parameters)
-                feed.addRecord(url=my_url, displayurl=my_url, action='add', mimetype='text/html')
-              else:
-                break
-            # flush the records to the GSA
-            self.logger().info('Transmitting [' + str(len(rsd)) + '] documents.')
-            self.pushFeed(feed)
-            feed.clear()
-        else:
-          # if we have a change token, ask sharepoint to get the deltas only
-          self.logger().info('Getting changes for [' + site_name + '] from [' + last_state + ']')
-          ntlm = WindowsHttpAuthenticated(username=self.SP_DOMAIN + '\\' + self.SP_USER , password=self.SP_PASSWORD)
-          url = url_prefix + '/_vti_bin/SiteData.asmx?WSDL'
-          client = suds.client.Client(url, transport=ntlm)
-          # TODO:  iterate over ListItemCollectionPositionNext somehow
-          client.service.GetChanges("SiteCollection",'',last_state,'',1000)
-          resp_site = client.last_received().getChild("soap:Envelope").getChild("soap:Body").getChild("GetChangesResponse").getChild("GetChangesResult").getText()
-          xmldoc = xml.dom.minidom.parseString(resp_site)
-          zrows = xmldoc.getElementsByTagName('z:row')
-          self.logger().info('Found [' + str(len(zrows)) + '] documents')
-          for row in zrows:
-            if row != None:
-              my_url =  row.attributes["ows_EncodedAbsUrl"].value
-              my_last_modified = row.attributes["ows_Last_x0020_Modified"].value 
+              self.logger().info('LastChangeToken is None') 
+          else:
+            self.logger().info('LastChangeToken is None') 
+          
+          rsd = li.getChild("rs:data")
+          # extract out the cursor ListItemCollectionPositionNext
+          if (rsd.getAttribute('ListItemCollectionPositionNext') != None):
+            ListItemCollectionPositionNext = rsd.getAttribute('ListItemCollectionPositionNext').getValue()
+	    self.logger().info('Found response cursor ListItemCollectionPositionNext [' + ListItemCollectionPositionNext + ']')
+          else:
+            ListItemCollectionPositionNext = None
+          # now for each row returned, add that to the feed set
+          for zrow in rsd:
+            if zrow != None:
+              my_url =  zrow.getAttribute("ows_EncodedAbsUrl").getValue()
+              my_last_modified = zrow.getAttribute("ows_Last_x0020_Modified").getValue()
               self.logger().debug('Found URL [' + my_url + ']')
-              feed.addRecord(url=my_url, displayurl=my_url, action='add', mimetype='text/html')	
+              # set all the attributes for this feed (TODO: set the security SPI parameters)
+              feed.addRecord(url=my_url, displayurl=my_url, action='add', mimetype='text/html')
             else:
               break
+          # Finally, save the library name and change token so that the next time, we know where we left off...
+          lib_dict.append('<library id="' +  folder_id + '" name="' +  _sList.Title + '" last_sync="' + changeid + '" />')  
           # flush the records to the GSA
-          self.logger().info('Transmitting [' + str(len(zrows)) + '] documents.')
+          self.logger().info('Transmitting [' + str(len(rsd)) + '] documents.')
           self.pushFeed(feed)
           feed.clear()
-
-        # Now return the changeID
-        return changeid
-    # for whatever reason there was a problem...return whatever we got back
-    return last_state
+    # return the last sync time
+    return lib_dict
 
   def authenticate(self, domain, username, password):
     self.logger().info('Authenticating [' + username + ']')
