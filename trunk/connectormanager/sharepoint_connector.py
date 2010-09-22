@@ -37,14 +37,14 @@ Run:
      1. Register the python connectormanager from the GSA
      2. Create a Sharepoint connector instance:
         Config Params:
-          a. sharepoint url    : the root URL for your Sharepoint Site:
-                                 http://www.yoursharepoint.com/
+          a. sharepoint url    : Root URL (without /) for the Sharepoint Site:
+                                 http://www.yoursharepoint.com
           b. state             : Base64 encoded XML Sharepoint ChangeTokens
                                  (leave blank for initial configuration)
           c. username          : Sharepoint Admin username
           d. domain            : Sharepoint Domain
           e. password          : Sharepoint Admin password
-          f. delay             : How often (in seconds) to query Sharepoint for changes.
+          f. delay             : How often (in seconds) to query  for changes.
                                                  
 
 Also see:
