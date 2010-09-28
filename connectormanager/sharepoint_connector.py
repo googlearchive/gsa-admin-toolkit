@@ -30,6 +30,8 @@ Prerequisite:
   GSA Python ConnectorManager (http://code.google.com/p/gsa-admin-toolkit)
   CherryPy  (http://www.cherrypy.org/)
   suds      (https://fedorahosted.org/suds/)
+            (python-setuptools)
+            (https://code.google.com/p/python-ntlm/)
 
 Run:
   python connectormanager.py  --connectors=sharepoint_connector.SharepointConnector
