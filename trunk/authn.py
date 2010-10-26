@@ -284,7 +284,7 @@ class AuthN(object):
     # 2) Statically redirect: provided as a command line argument
     if self.consumer_mech == 'static':
       static_redirect = 'https://' + self.gsa_host + \
-      ':7843/security-manager/samlassertionconsumer'
+      '/security-manager/samlassertionconsumer'
 
       if self.binding == 'artifact':
         self.recipients[rand_art] = static_redirect
