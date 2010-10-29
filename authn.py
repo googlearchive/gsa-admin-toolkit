@@ -66,6 +66,10 @@ usage:
 
     --key_blank_pwd   Assume a blank password for the private key for POST
                       binding and don't prompt for one.
+                      
+    --use_legacy      Use legacy AuthN on the GSA (i.e, security-manager 
+                      disabled on 6.2 GSA).  Setting should only be used with
+                      --consumer_mech=static --gsa_host=
 
 
 This script runs a web server on port 28080 that allows you to test the
@@ -140,10 +144,11 @@ class SignatureError(Exception):
 class AuthN(object):
 
   def __init__(self, port, protocol, debug_flag, consumer_mech,
-               saml_issuer, gsa_host, binding, key_file, key_pwd):
+               saml_issuer, gsa_host, binding, key_file, key_pwd, use_legacy):
     self.realm = "authn"
     self.protocol = protocol
     self.debug_flag = debug_flag
+    self.use_legacy = use_legacy
     self.consumer_mech = consumer_mech
     if gsa_host:
       self.gsa_host = gsa_host
@@ -283,8 +288,13 @@ class AuthN(object):
     # 1) Decode/decompress the unsigned SAMLRequest to figure out the AssertionConsumerServiceURL
     # 2) Statically redirect: provided as a command line argument
     if self.consumer_mech == 'static':
-      static_redirect = 'https://' + self.gsa_host + \
-      '/security-manager/samlassertionconsumer'
+      if (self.use_legacy):
+        log('Static redirect for Legacy AuthN ')
+        static_redirect = 'https://' + self.gsa_host + '/SamlArtifactConsumer' 
+      else:
+        log('Static redirect for SecurityManager AuthN ')
+        static_redirect = 'https://' + self.gsa_host + \
+         '/security-manager/samlassertionconsumer'       
 
       if self.binding == 'artifact':
         self.recipients[rand_art] = static_redirect
@@ -655,6 +665,7 @@ def main():
   cherrypy.server.socket_host =  '0.0.0.0'
   protocol = "http"
   debug_flag = False
+  use_legacy = False
   consumer_mech = "saml"
   saml_issuer = "authn.py"
   gsa_host = None
@@ -666,13 +677,15 @@ def main():
     print ('\nUsage: authn.py --debug --use_ssl '
            '--port=<port> --consumer_mech=(saml|static) '
            '--saml_issuer=<issuer> --gsa_host=<gsa_host> '
-           '--binding=(artifact|post) --key_file=<key_file> --key_blank_pwd\n')
+           '--binding=(artifact|post) --key_file=<key_file> --key_blank_pwd '
+           '--use_legacy\n')
 
   try:
     opts, args = getopt.getopt(sys.argv[1:], None,
                                ["debug", "use_ssl", "port=",
                                 "consumer_mech=", "saml_issuer=", "gsa_host=",
-                                "binding=", "key_file=", "key_blank_pwd"])
+                                "binding=", "key_file=", "key_blank_pwd",
+                                "use_legacy"])
   except getopt.GetoptError:
     usage()
     sys.exit(1)
@@ -703,6 +716,8 @@ def main():
       key_file = arg
     if opt == "--key_blank_pwd":
       key_pwd = ''
+    if opt == "--use_legacy":
+      use_legacy = True
 
   if consumer_mech == "static":
     if gsa_host is None:
@@ -730,7 +745,7 @@ def main():
 
   cherrypy.quickstart(AuthN(cherrypy.server.socket_port, protocol, debug_flag,
                             consumer_mech, saml_issuer, gsa_host, binding,
-                            key_file, key_pwd))
+                            key_file, key_pwd, use_legacy))
 
 if __name__ == '__main__':
   main()
