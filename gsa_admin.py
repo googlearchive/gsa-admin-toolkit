@@ -41,7 +41,7 @@ hellohello -f ~/tmp/o2.xml -v
 
 4. Export all the URLs to a file:
 
-./gsa_admin.py --hostname=<host> --username=admin 
+./gsa_admin.py --hostname=<host> --username=admin
 --password=<pw> --all_urls --output=/tmp/all_urls
 
 5. Retrieve GSA^n (mirroring) status from the admin console
@@ -348,66 +348,71 @@ class gsaWebInterface:
       return ""
 
   def setAccessControl(self, urlCacheTimeout):
-    # Tested on 5.0.0.G.14 and 6.2.0.G.14
+    # Tested on 6.8. Will not work on previous versions unless the form
+    # parameters are modified.
     self._login()
     security_token = self.getSecurityToken('cache')
+    # Sample body of a POST from a 6.8 machine:
+    #  security_token=Vaup237Rd5jXE6ZC0Iy6BeVo4h0%3A1290533850660&
+    #  actionType=cache&
+    #  basicAuthChallengeType=auto&
+    #  authzServiceUrl=&
+    #  overallAuthzTimeout=20.0&
+    #  requestBatchTimeout=5.0&
+    #  singleRequestTimeout=2.5&
+    #  maxHostload=10&
+    #  urlCacheTimeout=3600&
+    #  saveSettings=Save+Settings
     request = urllib2.Request(self.baseURL,
-                              urllib.urlencode({'actionType': 'cache',
-                                                'authnLoginUrl': '',
-                                                'authnArtifactServiceUrl': '',
-                                                'sessionCookieExpiration': '480',
+                              urllib.urlencode({'security_token': security_token,
+                                                'actionType': 'cache',
+                                                'basicAuthChallengeType': 'auto',
                                                 'authzServiceUrl': '',
+                                                'overallAuthzTimeout': '20.0',
                                                 'requestBatchTimeout': '5.0',
                                                 'singleRequestTimeout': '2.5',
                                                 'maxHostload': '10',
-                                                'security_token': security_token,
                                                 'urlCacheTimeout': urlCacheTimeout,
                                                 'saveSettings': 'Save Settings'}))
     result = self._openurl(request)
     # Form submit did not work if content contains this string: "Forgot Your Password?"
     # content = result.read()
 
+
   def _unescape(self, s):
     s = s.replace('&amp;', '&')
     return s
-  
+
   def syncDatabases(self, database_list):
     """Sync databases in the GSA.
-    
+
     Args:
       database_list: a List of String, a list of database name to sync
     """
-    
     self._login()
-    
     for database in database_list:
       log.info("Syncing %s ..." % database)
       param = urllib.urlencode({"actionType": "syncDatabase",
                                 "entryName": database})
       request = urllib2.Request(self.baseURL + "?" + param)
-      
       try:
         result = self._openurl(request)
       except:
         log.error("Unable to sync %s properly" % database)
-    
+
   def exportKeymatches(self, frontend, out):
     """Export all keymatches for a frontend.
-    
+
     Args:
       frontend: a String, the frontend name.
       out: a File, the file to write to.
     """
-    
     self._login()
-    
     log.info("Retrieving the keymatch file for %s" % frontend)
-    
     param = urllib.urlencode({'actionType' : 'frontKeymatchImport',
                               'frontend' : frontend,
                               'frontKeymatchExportNow': 'Export KeyMatches Now',
                               'startRow' : '1', 'search' : ''})
-    
     request = urllib2.Request(self.baseURL + "?" + param)
     try:
       result = self._openurl(request)
@@ -416,24 +421,20 @@ class gsaWebInterface:
     except Exception, e:
       log.error("Unable to retrieve Keymatches for %s" % frontend)
       log.error(e)
-      
+
   def exportSynonyms(self, frontend, out):
     """Export all Related Queries for a frontend.
-    
+
     Args:
       frontend: a String, the frontend name.
       out: a File, the file to write to.
     """
-    
     self._login()
-    
     log.info("Retrieving the Related Queries file for %s" % frontend)
-    
     param = urllib.urlencode({'actionType' : 'frontSynonymsImport',
                               'frontend' : frontend,
                               'frontSynonymsExportNow': 'Export Related Queries Now',
                               'startRow' : '1', 'search' : ''})
-    
     request = urllib2.Request(self.baseURL + "?" + param)
     try:
       result = self._openurl(request)
@@ -441,7 +442,6 @@ class gsaWebInterface:
       out.write(output)
     except:
       log.error("Unable to retrieve Related Queries for %s" % frontend)
-    
 
   def getAllUrls(self, out):
     """Retrieve all the URLs in the Crawl Diagnostics.
@@ -461,7 +461,6 @@ class gsaWebInterface:
     crawled = set([])
     doc_urls = set([])
     href_regex = re.compile(r'<a href="(.*?)"')
-  
     while 1:
       try:
         log.debug('have %i links to crawl' % len(tocrawl))
@@ -481,7 +480,6 @@ class gsaWebInterface:
 
       links = href_regex.findall(content)
       log.debug('found %i links' % len(links))
-  
       for link in (links.pop(0) for _ in xrange(len(links))):
         log.debug('found a link: %s' % link)
         if link.startswith('/'):
@@ -489,12 +487,12 @@ class gsaWebInterface:
           link = self._unescape(link)
           if link not in crawled:
             log.debug('this links has not been crawled')
-            if (link.find('actionType=contentDiagnostics') != -1 and 
+            if (link.find('actionType=contentDiagnostics') != -1 and
                  link.find('sort=excluded') == -1 and
                  link.find('sort=errors') == -1 and
                  link.find('view=excluded') == -1 and
                  link.find('view=successful') == -1 and
-                 link.find('view=errors') == -1): 
+                 link.find('view=errors') == -1):
               tocrawl.add(link)
               #print 'add this link to my tocrawl list'
             elif link.find('actionType=contentStatus') != -1:
@@ -517,7 +515,7 @@ class gsaWebInterface:
 
   def getStatus(self):
     """Get System Status and mirroring if enabled
-      
+
       The GSA sends out daily email but it doesn't inlcude mirroing status
       Temporary solution -- only tested with 6.2.0.G.44
     """
@@ -531,7 +529,7 @@ class gsaWebInterface:
     content = result.read()
 
     nodes = re.findall("row.*(<b>.*</b>)", content)
-    if not nodes: 
+    if not nodes:
       log.error("Could not find any replicas...")
       exit(3)
 
@@ -606,10 +604,10 @@ if __name__ == "__main__":
 
   parser.add_option("--cache-timeout", dest="cachetimeout",
           help="Value for Authorization Cache Timeout")
-  
+
   parser.add_option("--sources", dest="sources",
                     help="List of databases to sync (database1,database2,database3)")
-  
+
   parser.add_option("--frontend", dest="frontend",
                     help="Frontend used to export keymatches or related queries")
 
@@ -633,13 +631,13 @@ if __name__ == "__main__":
 
   actionOptionsGrp.add_option("-l", "--all_urls", dest="all_urls",
           help="Export all URLs from GSA", action="store_true")
-  
+
   actionOptionsGrp.add_option("-d" ,"--database_sync", dest="database_sync",
                               help="Sync databases", action="store_true")
-  
+
   actionOptionsGrp.add_option("-k" ,"--keymatches_export", dest="keymatches_export",
                               help="Export All Keymatches", action="store_true")
-  
+
   actionOptionsGrp.add_option("-y" ,"--synonyms_export", dest="synonyms_export",
                               help="Export All Related Queries", action="store_true")
 
@@ -845,7 +843,7 @@ if __name__ == "__main__":
       gsaWI.getAllUrls(f)
       f.close()
       log.info("All URLs exported.")
-      
+
   elif action == "database_sync":
     if not options.sources:
       log.error("No sources to sync")
@@ -855,7 +853,7 @@ if __name__ == "__main__":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsac = gsaWI.syncDatabases(databases)
     log.info("Sync completed")
-    
+
   elif action == "keymatches_export":
     if not options.outputFile:
       log.error("Output file not given")
@@ -868,12 +866,12 @@ if __name__ == "__main__":
     except IOError:
       log.error("unable to open %s to write" % options.outputFile)
       sys.exit(3)
-      
+
     log.info("Exporting keymatches for %s to %s" % (options.frontend, options.outputFile) )
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.exportKeymatches(options.frontend, f)
     f.close()
-  
+
   elif action == "synonyms_export":
     if not options.outputFile:
       log.error("Output file not given")
@@ -886,7 +884,7 @@ if __name__ == "__main__":
     except IOError:
       log.error("unable to open %s to write" % options.outputFile)
       sys.exit(3)
-      
+
     log.info("Exporting synonyms for %s to %s" % (options.frontend, options.outputFile) )
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.exportSynonyms(options.frontend, f)
