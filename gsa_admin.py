@@ -347,7 +347,7 @@ class gsaWebInterface:
     else:
       return ""
 
-  def setAccessControl(self, urlCacheTimeout):
+  def setAccessControl(self, maxhostload=10, urlCacheTimeout=3600):
     # Tested on 6.8. Will not work on previous versions unless the form
     # parameters are modified.
     self._login()
@@ -371,13 +371,14 @@ class gsaWebInterface:
                                                 'overallAuthzTimeout': '20.0',
                                                 'requestBatchTimeout': '5.0',
                                                 'singleRequestTimeout': '2.5',
-                                                'maxHostload': '10',
+                                                'maxHostload': maxhostload,
                                                 'urlCacheTimeout': urlCacheTimeout,
                                                 'saveSettings': 'Save Settings'}))
     result = self._openurl(request)
-    # Form submit did not work if content contains this string: "Forgot Your Password?"
+    # Form submit did not work if content contains this string: "Forgot Your Password" or
+    # <font color="red"> unless multiple users are logged in.
     # content = result.read()
-
+    # log.info(content)
 
   def _unescape(self, s):
     s = s.replace('&amp;', '&')
@@ -605,6 +606,9 @@ if __name__ == "__main__":
   parser.add_option("--cache-timeout", dest="cachetimeout",
           help="Value for Authorization Cache Timeout")
 
+  parser.add_option("--max-hostload", dest="maxhostload",
+          help="Value for max number of concurrent authz requests per server")
+
   parser.add_option("--sources", dest="sources",
                     help="List of databases to sync (database1,database2,database3)")
 
@@ -815,18 +819,30 @@ if __name__ == "__main__":
 
   elif action == "setaccesscontrol":
     log.info("Setting access control")
-    if not options.cachetimeout:
-      log.error("No value for Authorization Cache Timeout")
-      sys.exit(3)
-    try:
-      cachetimeout = int(options.cachetimeout)
-      log.info("Value of cache timeout: %d" % (cachetimeout))
-    except ValueError:
-      log.error("Cache timeout is not an integer: %s" % (cachetimeout))
-      sys.exit(3)
+    if options.cachetimeout:
+      try:
+        cachetimeout = int(options.cachetimeout)
+        log.info("Value of cache timeout: %d" % (cachetimeout))
+      except ValueError:
+        log.error("Cache timeout is not an integer: %s" % (cachetimeout))
+        sys.exit(3)
+    if options.maxhostload:
+      try:
+        maxhostload = int(options.maxhostload)
+        log.info("Value of cache timeout: %d" % (maxhostload))
+      except ValueError:
+        log.error("Cache timeout is not an integer: %s" % (maxhostload))
+        sys.exit(3)
 
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
-    gsaWI.setAccessControl(options.cachetimeout)
+    if options.maxhostload and options.cachetimeout:
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI.setAccessControl(options.maxhostload, options.cachetimeout)
+    elif options.maxhostload:
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI.setAccessControl(options.maxhostload)
+    else:
+      log.error("No value for Authorization Cache Timeout or Max Host Load")
+      sys.exit(3)
 
   elif action == "all_urls":
     if not options.outputFile:
