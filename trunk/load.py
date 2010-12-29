@@ -343,23 +343,27 @@ class Client(threading.Thread):
       except Queue.Empty:
         break
       else:
-        query_parsed = urlparse.urlparse(q.strip())
-        query_parsed_clean = query_parsed[4]
+        parameters = dict()
+        if q.find("/search?") >= 0:
+          query_parsed = urlparse.urlparse(q.strip())
+          query_parsed_clean = query_parsed[4]
         #Cleaning up query input to prevent invalid requests.
-        if query_parsed_clean[0] == "&":
-          query_parsed_clean = query_parsed_clean[1:-1]
-        query_terms = []
-        for qterm in query_parsed_clean.split("&"):
-          if qterm.find("=") != -1:
-            query_terms.append(qterm)
-        try:
-          parameters = dict([param.split("=") for param in query_terms])
-        except Exception, e:
-          print e
-          print query_parsed
-          print parameters
-          raise
-        if 'q' in parameters:
+          if query_parsed_clean[0] == "&":
+            query_parsed_clean = query_parsed_clean[1:-1]
+          query_terms = []
+          for qterm in query_parsed_clean.split("&"):
+            if qterm.find("=") != -1:
+              query_terms.append(qterm)
+          try:
+            parameters = dict([param.split("=") for param in query_terms])
+          except Exception, e:
+            print e
+            print query_parsed
+            print parameters
+            raise
+          if 'q' in parameters:
+            self.FetchContent(self.host, self.port, q.strip(), parameters)
+        else:
           self.FetchContent(self.host, self.port, q.strip(), parameters)
 
   def Request(self, host, port, method, req):
@@ -497,6 +501,7 @@ class LoadTester(object):
                       "Using query file.")
     if self.queries_filename:
       queries_file = open(self.queries_filename, 'r')
+      logging.info("Reading queries from: %s", self.queries_filename) 
       for line in queries_file:
         self.queries_list.append(line)
       queries_file.close()
@@ -563,7 +568,9 @@ class LoadTester(object):
     queries = Queue.Queue()
     for q in self.queries_list:
       queries.put(q)
+    logging.info("Queries loaded")
 
+    # initiate results object
     res = Results(self.charts, self.format)
     thread_list = []
     for i in range(self.num_threads):
@@ -651,8 +658,10 @@ class LoadTester(object):
 
   def Run(self):
     if self.mode == "benchmark":
+      logging.info("Mode selected: Benchmark")
       return self.Benchmark()
     else:
+      logging.info("Mode selected: Standard")
       return self.RunOnce().Summary()
 
 
@@ -743,7 +752,9 @@ def main():
   logging.basicConfig(level=logging.INFO,
                       format="%(message)s")
 
+  logging.info("Initializing...")
   lt.Init()
+  logging.info("Initializing complete...")
   report = lt.Run()
 
   if not output:
