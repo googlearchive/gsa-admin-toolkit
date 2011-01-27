@@ -629,7 +629,7 @@ class ConnectorManager(object):
       print 'Error Opening Config File'
 
   def _getPlatformInfo(self):
-    return 'Google Python Connector Manager; Python %s; %s %s (%s)' % (
+    return 'Google Enterprise Connector Manager 2.0.2 Python %s; %s %s (%s)' % (
         platform.python_version(), platform.system(),
         platform.release(), platform.machine())
 
