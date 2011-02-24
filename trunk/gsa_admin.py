@@ -1,4 +1,4 @@
-#!/usr/bin/python2.5
+#!/usr/bin/python2.6
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,12 +32,16 @@ hellohello -o ~/tmp/o.xml -v
 
 2. Make a change to the config file and sign:
 
-./gsa_admin.py -s --sign-password hellohello -f ~/tmp/o.xml -v -o ~/tmp/o2.xml
+./gsa_admin.py -n <host> -u admin -p <pw> -s --sign-password hellohello
+-f ~/tmp/o.xml -v -o ~/tmp/o2.xml
 
 3. Import the new config file:
 
 ./gsa_admin.py -n <host> --port 8000 -u admin -p <pw> -i --sign-password
 hellohello -f ~/tmp/o2.xml -v
+
+Note that import of configurations fails on 6.8.0.G.30, even if there
+have been no changes to the config.
 
 4. Export all the URLs to a file:
 
