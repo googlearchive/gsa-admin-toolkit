@@ -33,6 +33,9 @@ Crawl and Index
     Click "Create a New Cookie/Forms Authentication Rule"
     Enter username "crawler" and password "crawler". Submit form.
     Click "Save Cookie Rule and Close Window".
+
+For Legacy Authn:
+
 Serving > Forms Authentication
     URL: http://www.mycompany.com:8080/secure
     Cookie name: sso
@@ -46,6 +49,14 @@ Serving > Forms Authentication
     to something like
           SSO_COOKIE_DOMAIN = ".mydomain.com"
           SEARCH_HOST = "search.mydomain.com"
+
+For Security Manager (if using the Universal Login Form, not silent authentication):
+    Use the Default credential group.
+    Set up an Auth Mechanism as follows:
+      Credential Group: Default
+      Redirect to a form when sample URL check fails: checked
+      Mechanism name: test
+      Sample URL: http://www.mycompany.com:8080/secure
 
 Options:
 
@@ -174,6 +185,7 @@ class Sso(object):
     return "Anyone can view this page. No authentication is required"
 
   def secure(self, redirected=None, param=None):
+    # print cherrypy.request.headers
     login = self.authenticate("secure")
     refresh = ""
     if self.test_meta_refresh:
