@@ -833,9 +833,9 @@ if __name__ == "__main__":
     if options.maxhostload:
       try:
         maxhostload = int(options.maxhostload)
-        log.info("Value of cache timeout: %d" % (maxhostload))
+        log.info("Value of max hostload: %d" % (maxhostload))
       except ValueError:
-        log.error("Cache timeout is not an integer: %s" % (maxhostload))
+        log.error("Max hostload is not an integer: %s" % (maxhostload))
         sys.exit(3)
 
     if options.maxhostload and options.cachetimeout:
