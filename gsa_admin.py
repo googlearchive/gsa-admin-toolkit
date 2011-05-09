@@ -584,6 +584,30 @@ class gsaWebInterface:
         print ''.join(cols)
       print "==========================================================="
 
+  def getCollection (self,collection):
+    """Get Collection statistics for daily processing."""
+    self._login()
+    log.debug("Retrieving GSA's collection information from: %s, collection name %s",
+              self.hostName, collection)
+    request = urllib2.Request(self.baseURL + "?" +
+                              urllib.urlencode({'actionType': 'contentDiagnostics',
+                                                'sort': 'crawled',
+                                                'collection': collection}))
+    result = self._openurl(request)
+    content = result.read()
+    urlall = re.findall("view=all.>(.*)</a>",content)
+    urlsuccessful = re.findall("view=successful.>(.*)</a>",content)
+    urlerrors = re.findall("view=errors.>(.*)</a>",content)
+    urlexcluded = re.findall("view=excluded.>(.*)</a>",content)
+    numsurls = 0
+    numeurls = 0
+    for i in range(len(urlall)):
+      log.debug("URL %s Successful URLs %s Errored URLs %s ",urlall[i], urlsuccessful[i], urlerrors[i])
+      numsurls = numsurls + int(urlsuccessful[i].replace(",", ""))
+      numeurls = numeurls + int(urlerrors[i].replace(",", ""))
+      log.debug("Collection Totals: %s URLs, %s Error URLs", numsurls, numeurls)
+    # Here you can plug any type of MySQL logging method/etc
+
 
 ###############################################################################
 # MAIN
@@ -619,6 +643,9 @@ if __name__ == "__main__":
   parser.add_option("--frontend", dest="frontend",
                     help="Frontend used to export keymatches or related queries")
 
+  parser.add_option("--collection", dest="collection",
+                    help="Collection name")
+
   # actionsOptions
   actionOptionsGrp = OptionGroup(parser, "Actions:")
 
@@ -651,6 +678,9 @@ if __name__ == "__main__":
 
   actionOptionsGrp.add_option("-z", "--get-status", dest="getstatus",
                               action="store_true", help="Get GSA Status")
+
+  actionOptionsGrp.add_option("-c", "--get-collection-report", dest="getcollection",
+                              action="store_true", help="Get GSA Collection Statistics")
 
   parser.add_option_group(actionOptionsGrp)
 
@@ -755,6 +785,12 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "status"
+  if options.getcollection:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "getcollection"
   if not action:
       log.error("No action specified")
       sys.exit(3)
@@ -912,3 +948,10 @@ if __name__ == "__main__":
   elif action == "status":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.getStatus()
+  elif action == "getcollection":
+    if not options.collection:
+      collection = "default_collection"
+    else:
+      collection = options.collection
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI.getCollection(collection)
