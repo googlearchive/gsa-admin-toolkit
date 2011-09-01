@@ -155,7 +155,8 @@ class gsaConfig:
     doc = xml.dom.minidom.parseString(self.configXMLString)
     outputXMLFile = codecs.open(filename, 'w', "utf-8")
     log.debug("Writing XML to %s" % filename)
-    doc.writexml(outputXMLFile)
+    # GSA newer than 6.? expects '<eef>' to be on the second line.
+    outputXMLFile.write(doc.toxml().replace("<eef>", "\n<eef>", 1))
 
   def verifySignature(self, password):
     configXMLString = self.getXMLContents()
