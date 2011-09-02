@@ -40,8 +40,6 @@ hellohello -o ~/tmp/o.xml -v
 ./gsa_admin.py -n <host> --port 8000 -u admin -p <pw> -i --sign-password
 hellohello -f ~/tmp/o2.xml -v
 
-Note that import of configurations fails on 6.8.0.G.30, even if there
-have been no changes to the config.
 
 4. Export all the URLs to a file:
 
