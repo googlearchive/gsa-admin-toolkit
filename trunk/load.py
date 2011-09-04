@@ -73,6 +73,8 @@
 #     --max_trials    Also for the benchmark mode. Specifies the maximum
 #                     number of test iterations to run. The default value
 #                     is 15 trials.
+#     --raw           Treat the query file as containing raw URL (minus the
+#                     host and port)
 #
 #
 # Sample output from a successful query:
@@ -318,7 +320,7 @@ class Results(object):
 class Client(threading.Thread):
 
   def __init__(self, host, port, queries, res, enable_cluster, enable_suggest,
-               rand_suggest, auth_cfg):
+               rand_suggest, auth_cfg, raw):
     threading.Thread.__init__(self)
     self.host = host
     self.port = port
@@ -335,6 +337,7 @@ class Client(threading.Thread):
     # match the CSS, which will have something like
     #           #<group name>Active
     self.credgrp_re = re.compile(r"#(.*)Active")
+    self.raw = raw
 
   def run(self):
     while True:
@@ -378,13 +381,17 @@ class Client(threading.Thread):
     if method == "POST":
       data = ""
 
-    result = TimedRequest("http://%s:%s%s" % (host, port, req), data)
+    if self.raw != True:
+        result = TimedRequest("https://%s:%s%s" % (host, port, req), data)
+    else:
+        result = TimedRequest(req, data)
+
     resp = result[0]
 
     # check if we've ended up at the actual search results page
     # if not, then assume we've landed at some sort of auth page
     respurl = urlparse.urlparse(resp.geturl())
-    if (respurl[2] != "/search" and respurl[2] != "/suggest" and
+    if self.raw != True and (respurl[2] != "/search" and respurl[2] != "/suggest" and
         respurl[2] != "/cluster"):
       if not self.auth_cfg:
         raise urllib2.URLError("No auth cfg found, needed for %s" % req)
@@ -451,7 +458,7 @@ class Client(threading.Thread):
       for s in sugtokens:
         test_requests.append("/suggest?q=%s&max_matches=10&use_similar&"
                              "access=p&format=rich" % s)
-    if q.find("/search?") == 0 and q.find("coutput=json") != 0:
+    if self.raw or (q.find("/search?") == 0 and q.find("coutput=json") != 0):
       test_requests.append(q)
     else:
       test_requests.append("/search?q=%s&output=xml_no_dtd&client=default_frontend&roxystylesheet=default_frontend&site=default_collection" % (q))
@@ -576,7 +583,7 @@ class LoadTester(object):
     for i in range(self.num_threads):
       c = Client(self.host, self.port, queries, res,
                  self.enable_cluster, self.enable_suggest, self.rand_suggest,
-                 self.auth_cfg)
+                 self.auth_cfg, self.raw)
       c.name = "Thread-%d" % i
       thread_list.append(c)
       c.start()
@@ -694,6 +701,7 @@ def main():
   lt.thread_step = 10
   lt.mode = "once"
   lt.format = "text"
+  lt.raw = False
   output = None
 
   try:
@@ -703,7 +711,7 @@ def main():
                                 "rand_suggest", "charts", "auth_cfg=",
                                 "admin_username=", "admin_password=",
                                 "mode=", "thread_step=", "max_err_rate=",
-                                "max_trials=", "format=", "output="])
+                                "max_trials=", "format=", "output=", "raw"])
   except getopt.GetoptError:
     print usage()
     sys.exit(1)
@@ -744,6 +752,8 @@ def main():
       lt.format = arg
     if opt == "--output":
       output = arg
+    if opt == "--raw":
+      lt.raw= True
 
   if not lt.host or not (lt.queries_filename or lt.query_log_name):
     print usage()
