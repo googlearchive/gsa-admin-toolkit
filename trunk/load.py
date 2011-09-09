@@ -755,7 +755,7 @@ def main():
     if opt == "--raw":
       lt.raw= True
 
-  if not lt.host or not (lt.queries_filename or lt.query_log_name):
+  if (not lt.host and not lt.raw) or not (lt.queries_filename or lt.query_log_name):
     print usage()
     sys.exit(1)
 
