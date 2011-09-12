@@ -134,6 +134,14 @@ End Sub
 'check to see if the MIT kerberos client is installed.
 'the default location to for install is c:\program files and it must be installed there
 Sub CheckMITKerberos()
+	Set WshShell = CreateObject("WScript.Shell")
+	Architecture = WshShell.RegRead("HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment\PROCESSOR_ARCHITECTURE")
+	namePos = InStr(Architecture ,"64")
+	If namePos > 0 Then
+		writeOutput "<font color='red' size=2>---> MIT Kerberos for Windows is not supported on 64bit OS</font><br>"
+	Else
+		writeOutput "<font color='green' size=2>---> This is a 32-bit OS</font><br>"
+	End If
 	Set objFSO = CreateObject("Scripting.FileSystemObject")
 	If objFSO.FileExists ("c:\program files\mit\kerberos\bin\klist.exe") then
         writeOutput "<font color='green'>---> Found MIT Kerberos Client</font>" 
@@ -167,7 +175,6 @@ Sub RunDiag()
     'check for valid results
     'RunSecureSearch objdns.value
 End Sub
-
 
 'Invoked with the .hta is initially loaded (runs only once)
 'First connecto to AD and display the Domain/Forest version
@@ -416,7 +423,7 @@ Sub CheckUserEntry(username)
                         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> ADAccount is NOT Trusted for Delegation"  & "</font></br>"
                         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->   Please enable 'Trust this user for delegation to any service'</font></br>"                        
                     Case "USE_DES_KEY_ONLY" 
-                        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;---> AD DES Encryption is Disabled"  & "</font></br>"
+                        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD DES Encryption is Disabled"  & "</font></br>"
                     Case "PASSWORD_EXPIRED"              
                         writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;---> AD Password has not Expired"  & "</font></br>"
                 End Select            
@@ -521,8 +528,9 @@ Sub ParseKeytab(keytabfile)
     
     if (KT_ENC = "(DES cbc mode with RSA-MD5)") Then
         writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->Found Encryption is DES: "& KT_ENC  & "</font></br>"
+    elseif (KT_ENC = "(ArcFour with HMAC/md5)") Then
+        writeoutput "<font color='green'>&nbsp;&nbsp;&nbsp;--->Found Encryption is RC4: "& KT_ENC  & "</font></br>"
     else
-        writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Keytab Encryption is NOT DES: "& KT_ENC  & "</font></br>"    
         writeoutput "<font color='red'>&nbsp;&nbsp;&nbsp;--->Please run ktpass again and specify the encryption type</font></br>"            
     end if 
     'now parse out the KT_SPN to see if its in correct case: HTTP/gsa.yourdomain.com@YOURDOMAIN.COM 
@@ -764,7 +772,9 @@ End Function
         				</tr>              
     				</table>
     				
-    				<center><input type="submit" onclick="javascript:ClearOutput(); RunDiag();" class="lsb" value="Run Diagnostics" name="btnG"/></center>
+    				<center>
+				<input type="submit" onclick="javascript:ClearOutput(); RunDiag();" class="lsb" value="Run Diagnostics" name="btnG"/>
+				</center>
                     <br />
     				<font size="1"  >
     					This utility validates various GSA-related kerberos infrastructure and configuration options for Secure Serving.  Please run this script on any windows system that has the
