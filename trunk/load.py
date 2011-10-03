@@ -382,7 +382,7 @@ class Client(threading.Thread):
       data = ""
 
     if self.raw != True:
-        result = TimedRequest("https://%s:%s%s" % (host, port, req), data)
+        result = TimedRequest("http://%s:%s%s" % (host, port, req), data)
     else:
         result = TimedRequest(req, data)
 
