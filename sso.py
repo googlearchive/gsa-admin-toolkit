@@ -45,10 +45,10 @@ Serving > Forms Authentication
     the appliance to http://myhost.mydomain.com:8080/externalLogin
     Note that the external login script will not work when
     calling sso.py with the test_cookie_path option.
-    You must also set the SSO_COOKIE_DOMAIN and SEARCH_HOST variables
+    You must also set the --cookied_domain  and --gsa_host options
     to something like
-          SSO_COOKIE_DOMAIN = ".mydomain.com"
-          SEARCH_HOST = "search.mydomain.com"
+          --cookie_domain=".mydomain.com"
+          --gsa_host="search.mydomain.com"
 
 For Security Manager (if using the Universal Login Form, not silent authentication):
     Use the Default credential group.
@@ -60,6 +60,11 @@ For Security Manager (if using the Universal Login Form, not silent authenticati
 
 Options:
 
+  --cookie_cracking         Return X-Username: and X-Groups for "/secure"
+  --cookie_domain=          Specifies Cookie Domain.
+                            Required if you access sso.py's login form directly.
+  -- gsa_host=                   The Fully Qualified Domain Name of the GSA.
+                            Required if you use Legacy AuthN and no Referrer presents.
   --test_cookie_path        Mimics an Oblix server's cookie handling
   --test_bug_950572         Tests whether bug has been fixed that
                             prevents more than one cookie being handled
@@ -81,19 +86,22 @@ from socket import gethostname
 
 FORM_COOKIE = "form"
 SSO_COOKIE = "sso"
-SSO_COOKIE_DOMAIN = ""
-SEARCH_HOST = ""
 
 class Sso(object):
 
-  def __init__(self, test_cookie_path, protocol, test_bug_950572, test_meta_refresh, delay):
+  def __init__(self, cookie_cracking, cookie_domain, gsa_host, test_cookie_path, protocol, test_bug_950572, test_meta_refresh, delay):
+    self.cookie_cracking = cookie_cracking
     self.test_cookie_path = test_cookie_path
     self.protocol = protocol
     self.test_bug_950572 = test_bug_950572
     self.test_meta_refresh = test_meta_refresh
     self.delay = delay
-    self.cookie_domain = SSO_COOKIE_DOMAIN
-    self.search_host = SEARCH_HOST
+    self.cookie_domain = ""
+    if cookie_domain:
+      self.cookie_domain = cookie_domain
+    self.search_host = ""
+    if gsa_host:
+      self.search_host = gsa_host;
 
   def index(self):
     secure_links = "Additional secure links: "
@@ -121,7 +129,7 @@ class Sso(object):
   def get_host(self):
     return cherrypy.request.headers["host"]
 
-  def login(self, login=None, password=None, path=None, msg=None):
+  def login(self, login=None, password=None, path="", msg=None):
     # print cherrypy.request.headers
     if self.test_cookie_path:
       if msg != None:
@@ -168,11 +176,17 @@ class Sso(object):
   def externalLogin (self, returnPath=None):
     if not returnPath:
       return "Need to specify returnPath"
-    if cherrypy.request.headers.has_key("Referer"):
-      returnHost = cherrypy.request.headers["Referer"].split('/')[2]
+    if returnPath.startswith ("http://") or returnPath.startswith("https://"):
+    # Security Manager sets returnPath with the host part
+      path = returnPath
     else:
-      returnHost = self.search_host
-    path = "http://" + returnHost + returnPath
+    # Legacy AuthN sets returnPath without the host part
+    #
+      if cherrypy.request.headers.has_key("Referer"):
+        returnHost = cherrypy.request.headers["Referer"].split('/')[2]
+      else:
+        returnHost = self.search_host
+      path = "http://" + returnHost + returnPath
     self.authenticate(urllib.quote(path))
     self.redirect(path)
 
@@ -187,6 +201,9 @@ class Sso(object):
   def secure(self, redirected=None, param=None):
     # print cherrypy.request.headers
     login = self.authenticate("secure")
+    if self.cookie_cracking:
+      cherrypy.response.headers["X-Username"] = login
+      cherrypy.response.headers["X-Groups"] = "ssopygroup"
     refresh = ""
     if self.test_meta_refresh:
       this_url = "%s://%s/secure?redirected=1" % (self.protocol, self.get_host())
@@ -212,6 +229,8 @@ class Sso(object):
 
   def logout(self):
     cherrypy.response.cookie[SSO_COOKIE] = ""
+    if self.cookie_domain:
+      cherrypy.response.cookie[SSO_COOKIE]['domain'] = self.cookie_domain
     cherrypy.response.cookie[SSO_COOKIE]['expires'] = 0
     if self.test_cookie_path:
       cherrypy.response.cookie[FORM_COOKIE] = ""
@@ -252,6 +271,9 @@ def main(argv):
   pass
 
 if __name__ == '__main__':
+  cookie_cracking = False
+  cookie_domain = None
+  gsa_host = None
   test_cookie_path = False
   protocol = "http"
   test_bug_950572 = False
@@ -261,13 +283,20 @@ if __name__ == '__main__':
   # But we would normally want to run on the external interface
   hostname = gethostname()
   try:
-    opts, args = getopt.getopt(sys.argv[1:], None, ["test_cookie_path", "use_ssl",
+    opts, args = getopt.getopt(sys.argv[1:], None, ["cookie_cracking", "cookie_domain=", "gsa_host=",
+                                                "test_cookie_path", "use_ssl",
                                                 "test_bug_950572", "test_meta_refresh",
                                                 "port=", "delay=", "host="])
   except getopt.GetoptError:
     print "Invalid arguments"
     sys.exit(1)
   for opt, arg in opts:
+    if opt == "--cookie_cracking":
+      cookie_cracking = True
+    if opt=="--cookie_domain":
+      cookie_domain = arg
+    if opt == "--gsa_host":
+      gsa_host = arg
     if opt == "--test_cookie_path":
       test_cookie_path = True
     if opt == "--use_ssl":
@@ -285,8 +314,8 @@ if __name__ == '__main__':
       cherrypy.config.update({"global": { "server.socket_port": port }})
     if opt == "--delay":
       delay = int(arg)
-    if opt == "host":
+    if opt == "--host":
       hostname = arg
 
   cherrypy.config.update({"global": { "server.socket_host": hostname }})
-  cherrypy.quickstart(Sso(test_cookie_path, protocol, test_bug_950572, test_meta_refresh, delay))
+  cherrypy.quickstart(Sso(cookie_cracking, cookie_domain, gsa_host, test_cookie_path, protocol, test_bug_950572, test_meta_refresh, delay))
