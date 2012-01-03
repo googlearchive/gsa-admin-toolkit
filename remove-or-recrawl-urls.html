@@ -80,7 +80,13 @@ This code is not supported by Google
   function submitForm() {
     var feed_form = document.getElementById('feed_form');
     var appliance = document.getElementById('appliance_input').value;
-    feed_form.action = "http://" + appliance + ":19900/xmlfeed"
+    var protocol = document.getElementById('protocol').value;
+    if (protocol == 'https') {
+        var port = "19902";
+    } else {
+        var port = "19900";
+    }
+    feed_form.action = protocol + "://" + appliance + ":" + port + "/xmlfeed"
     feed_form.submit();
   }
   //-->
@@ -92,7 +98,8 @@ This code is not supported by Google
 	 <p>This forms generates an XML feed for the Google Search Appliance,
 	 which will tell the appliance to remove or recrawl the provided URLs.</p>
 	 <ol>
-	 <li>Enter the <b>Appliance hostname or IP address</b>, no port is necessary --it always POSTs to port 19900.</li>
+	 <li>Enter the <b>Appliance hostname or IP address</b>, and select HTTP or HTTPS (port 19900 or 19902).
+             Notes: HTTPS for feed is added since 6.10.4.G.22</li>
 	 <li>Enter URLs into the <b>URLs to remove/recrawl</b> text box, one URL per line, no comments are allowed.</li>
 	 <li>Press the appropriate button:
 	 	<ul>
@@ -108,6 +115,10 @@ This code is not supported by Google
     <form name="urls" id="urls_form" action="#">
       <p>Appliance hostname or IP address:
         <input type="text" name="appliance" id="appliance_input" />
+        <select id="protocol">
+          <option>http</option>
+          <option>https</option>
+        </select>
       </p>
       <p>
         URLs to remove/recrawl:
@@ -121,6 +132,7 @@ This code is not supported by Google
     <form enctype="multipart/form-data" method="post"
         name="feed" id="feed_form"
         action="http://127.0.0.1:19900/xmlfeed">
+      <p>Generated Feed XML Codes:</p>
       <input type="hidden" name="datasource" id="feed_datasource" />
       <input type="hidden" name="feedtype" id="feed_type" />
       <textarea name="data" cols="100" rows="1" id="feed_textarea"></textarea>

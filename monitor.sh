@@ -23,9 +23,12 @@
 # Usage:
 #   Run every minute from cron. For example:
 #     * * * * * /root/monitor.sh -h search.google.com -q google >> /tmp/monitor.out
-#   The argument following -q is the hostname of the appliance.
-#   The argument following -h  is a word that appears in a lot of documents,
+#   The argument following -h is the hostname of the appliance.
+#   The argument following -q is a word that appears in a lot of documents,
 #   such as your domain name.
+#   Optional params: 
+#     -s collection_name
+#     -f frontend_name
 #
 # Sample output:
 #   Wed Aug 1 16:25:20 PDT 2007  HTTP status: 200 Connect time: 0.023 \
@@ -51,12 +54,16 @@
 appliance=""
 domain=""
 debug=0
+frontend="default_frontend"
+site="default_collection"
 
-while getopts h:q:d o; do
+while getopts h:q:d:f:s o; do
   case "$o" in
     h)     appliance="$OPTARG";;
     q)     domain="$OPTARG";;
     d)     debug=1;;
+    f)     frontend="$OPTARG";;
+    s)     site="$OPTARG";;
   esac
 done
 
@@ -72,7 +79,7 @@ datestr=`date +%s`
 query="${domain}+OR+${datestr}${RANDOM}"
 timingstring="Connect time: %{time_connect} Total time: %{time_total}"
 outstring="HTTP status: %{http_code} ${timingstring} Size: %{size_download} Query: ${query}"
-params="client=default_frontend&site=default_collection&output=xml"
+params="client=${frontend}&site=${site}&output=xml"
 url="http://${appliance}/search?q=${query}&${params}&monitoring=1"
 
 echo -n `date` " "
