@@ -40,6 +40,9 @@ hellohello -o ~/tmp/o.xml -v
 ./gsa_admin.py -n <host> --port 8000 -u admin -p <pw> -i --sign-password
 hellohello -f ~/tmp/o2.xml -v
 
+Note that you must use the same password to sign a file that you used
+when exporting. You will get an error when importing if you do not do
+this.
 
 4. Export all the URLs to a file:
 
@@ -49,11 +52,10 @@ hellohello -f ~/tmp/o2.xml -v
 5. Retrieve GSA^n (mirroring) status from the admin console
 ./gsa_admin.py -z -n <host> -u admin -p <pw>
 
-Note that you must use the same password to sign a file that you used
-when exporting. You will get an error when importing if you do not do
-this.
+6. Trigger database synchronization
+./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD --database_sync --sources=DB_NAME
 
-TODO(jlowry): add in functionality from adminconsole.py: sync DB,
+TODO(jlowry): add in functionality from adminconsole.py:
 pause/resume crawl, get crawl status, shutdown.
 """
 
