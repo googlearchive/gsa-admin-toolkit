@@ -207,6 +207,20 @@ class AuthN(object):
   def getrandom_samlID(self):
     return random.choice('abcdefghijklmnopqrstuvwxyz') + hex(random.getrandbits(160))[2:-1]
 
+  # 
+  def get_saml_namespace(self, xmldoc, tagname):
+    a = xmldoc.getElementsByTagName('samlp:%s' % tagname)
+    if a != []:
+      return ("samlp", "saml", a)
+    a = xmldoc.getElementsByTagName('saml2p:%s' % tagname)
+    if a != []:
+      return ("saml2p", "saml2", a)
+
+    log("exotic namespace")
+    #  TODO get the name space and return it
+    return ("", "", [])
+
+    
   # Collects the SAMLRequest, RelayState and prompts uses BASIC to prompt the
   # user.
   def login(self, RelayState=None, SAMLRequest = None, SigAlg = None,
@@ -256,12 +270,14 @@ class AuthN(object):
     # Try to get the issuer and request id of the saml request
     saml_oissuer = None
     req_id = None
-    samlpnode = xmldoc.getElementsByTagName('samlp:AuthnRequest')
+    (spprefix, sprefix, samlpnode) = self.get_saml_namespace(xmldoc, 'AuthnRequest')
+    log('using prefix: %s and %s' % (spprefix, sprefix))
+
     for node in samlpnode:
-      if node.nodeName == 'samlp:AuthnRequest':
+      if node.nodeName == '%s:AuthnRequest' % spprefix:
         if samlpnode[0].hasAttribute('ID'):
           req_id = samlpnode[0].attributes['ID'].value
-        samliss = node.getElementsByTagName('saml:Issuer')
+        samliss = node.getElementsByTagName('%s:Issuer' % sprefix)
         for n_issuer in samliss:
           cnode = n_issuer.childNodes[0]
           if cnode.nodeType == node.TEXT_NODE:
@@ -320,7 +336,7 @@ class AuthN(object):
 
       acs_url = None
       for node in samlpnode:
-        if node.nodeName == 'samlp:AuthnRequest':
+        if node.nodeName == '%s:AuthnRequest' % spprefix:
           if samlpnode[0].hasAttribute('AssertionConsumerServiceURL'):
             acs_url = samlpnode[0].attributes \
                           ['AssertionConsumerServiceURL'].value
@@ -331,7 +347,7 @@ class AuthN(object):
                     ' SAMLRequest</body></html>')
           if self.debug_flag:
             log('login Parsed AssertionConsumerServiceURL: %s' %(acs_url))
-          samliss = node.getElementsByTagName('saml:Issuer')
+          samliss = node.getElementsByTagName('%s:Issuer' % sprefix)
           for n_issuer in samliss:
             cnode = n_issuer.childNodes[0]
             if cnode.nodeType == node.TEXT_NODE:
@@ -427,7 +443,7 @@ class AuthN(object):
       # Now parse out the SAML ID number, artifact
 
     xmldoc = xml.dom.minidom.parseString(authn_request)
-    samlp = xmldoc.getElementsByTagName('samlp:ArtifactResolve')
+    (spprefix, sprefix, samlp) = self.get_saml_namespace(xmldoc, 'ArtifactResolve')
 
     log('-----------  ARTIFACT BEGIN  -----------')
     if self.debug_flag:
@@ -438,14 +454,14 @@ class AuthN(object):
     saml_oissuer = None
 
     for node in samlp:
-      if (node.nodeName == 'samlp:ArtifactResolve'):
+      if (node.nodeName == '%s:ArtifactResolve' % spprefix):
         saml_id = samlp[0].attributes["ID"].value
-        samlartifact = node.getElementsByTagName('samlp:Artifact')
+        samlartifact = node.getElementsByTagName('%s:Artifact' % spprefix)
         for n_issuer in samlartifact:
           cnode = n_issuer.childNodes[0]
           if cnode.nodeType == node.TEXT_NODE:
             saml_artifact = cnode.nodeValue
-        samliss = node.getElementsByTagName('saml:Issuer')
+        samliss = node.getElementsByTagName('%s:Issuer' % sprefix)
         for n_issuer in samliss:
           cnode = n_issuer.childNodes[0]
           if cnode.nodeType == node.TEXT_NODE:
