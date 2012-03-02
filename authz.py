@@ -126,6 +126,19 @@ class AuthZ(object):
     # Generate a randomID starting with an character
     return random.choice('abcdefghijklmnopqrstuvwxyz') + hex(random.getrandbits(160))[2:-1]
 
+  # 
+  def get_saml_namespace(self, xmldoc, tagname):
+    a = xmldoc.getElementsByTagName('samlp:%s' % tagname)
+    if a != []:
+      return ("samlp", "saml", a)
+    a = xmldoc.getElementsByTagName('saml2p:%s' % tagname)
+    if a != []:
+      return ("saml2p", "saml2", a)
+
+    log("exotic namespace")
+    #  TODO get the name space and return it
+    return ("", "", [])
+
   # The SAML Authorization service (/authz) called by the GSA to query to see
   # if individual URLs are authorized for a given user. Both the username
   # and the URL to check for is passed in
@@ -192,17 +205,18 @@ class AuthZ(object):
     # If we're using the internal authz system, parse out the inbound
     # request for the URI and use that to check against the local authz db
 
-    samlp = xmldoc.getElementsByTagName('samlp:AuthzDecisionQuery')
+    (spprefix, sprefix, samlp) = self.get_saml_namespace(xmldoc, 'AuthzDecisionQuery')
+    log('using prefix: %s and %s' % (spprefix, sprefix))
 
     response = ('<soapenv:Envelope '
                 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
                 '<soapenv:Body>')
 
     for node in samlp:
-      if (node.nodeName == "samlp:AuthzDecisionQuery"):
+      if (node.nodeName == "%s:AuthzDecisionQuery" % spprefix):
         saml_id = node.attributes["ID"].value
         resource = node.attributes["Resource"].value
-        samlName = node.getElementsByTagName("saml:NameID")
+        samlName = node.getElementsByTagName("%s:NameID" % sprefix)
         for n_issuer in samlName:
           cnode= n_issuer.childNodes[0]
           if cnode.nodeType == node.TEXT_NODE:
