@@ -160,10 +160,10 @@ class AuthN(object):
     log ('-----> Starting authn.py <------')
     log ('--------------------------------')
 
-    #authentication database in the form username: password
-    self.user_db = {'user1': 'password1',
-                    'user2': 'password1',
-                    'gsa': 'password1'}
+    #authentication database in the form username: [password, [group1, group2,...]]
+    self.user_db = {'user1': ['password1', []],
+                    'user2': ['password1', ['group2']],
+                    'gsa':   ['password1', ['group1', 'group2']]}
 
     # stores the authenticated sessions
     self.authnsessions = {}
@@ -172,7 +172,7 @@ class AuthN(object):
     self.saml_issuer = saml_issuer
     self.passwd_db = {}
     for user in self.user_db:
-      self.passwd_db[user] = md5.new(self.user_db[user]).hexdigest()
+      self.passwd_db[user] = md5.new(self.user_db[user][0]).hexdigest()
 
   #Main landing page
   def index(self):
@@ -188,7 +188,8 @@ class AuthN(object):
                   '<tr><th>Username</th><th>Password</th></tr>')
 
     for user in self.user_db:
-      indexHTML += ('<tr><td>' + user + '</td><td>' + self.user_db[user] +
+      indexHTML += ('<tr><td>' + user + '</td><td>' + self.user_db[user][0] +
+                    '</td><td>' + "".join(self.user_db[user][1]) +
                     '</td></tr>')
     indexHTML += ('</table>'
                   '<p><a href="login">Login</a>'
@@ -549,6 +550,14 @@ class AuthN(object):
                  '<ds:KeyName/>'
                  '</ds:KeyInfo>'
                  '</ds:Signature>') % resp_rand_id
+    grptmpl = ''
+    if self.user_db[username][1]:
+      log('looking for group info for user ' + username)
+      grptmpl += '<saml:AttributeStatement>' + '<saml:Attribute Name="member-of">'
+      for grp in self.user_db[username][1]:
+        grptmpl += '<saml:AttributeValue>%s</saml:AttributeValue>' % grp
+        log('found group: ' + grp)
+      grptmpl += '</saml:Attribute>' + '</saml:AttributeStatement>'
     resp = ('<samlp:Response '
             'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
             'xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" '
@@ -581,6 +590,7 @@ class AuthN(object):
             '</saml:AuthnContextClassRef>'
             '</saml:AuthnContext>'
             '</saml:AuthnStatement>'
+            '%s'
             '</saml:Assertion>'
             '%s'
             '</samlp:Response>') % (resp_rand_id, now, recipient,
@@ -588,7 +598,7 @@ class AuthN(object):
                                     self.saml_issuer, username,
                                     login_req_id, recipient, later,
                                     now, later, audience,
-                                    now, rand_id_assert, sigtmpl)
+                                    now, rand_id_assert, grptmpl, sigtmpl)
     if signed:
       # hack DTD that lets xmlsec know the ID field name (pyxmlsec doesn't have
       # a method that lets us specify this)
