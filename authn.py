@@ -160,10 +160,12 @@ class AuthN(object):
     log ('-----> Starting authn.py <------')
     log ('--------------------------------')
 
-    #authentication database in the form username: [password, [group1, group2,...]]
-    self.user_db = {'user1': ['password1', []],
-                    'user2': ['password1', ['group2']],
-                    'gsa':   ['password1', ['group1', 'group2']]}
+    # authentication database in the form of:
+    #  username: [password, [group1, group2,...]]
+    self.user_db = {'Administrator@ESODOMAIN': ['pass1', []],
+                    'Administrator': ['pass2', []],
+                    'user2@esodomain': ['pass1', ['esodomaingrp with space']],
+                    'esodomain\gsa':   ['pass1', ['ESODOMAIN\gShare1', 'ESODOMAIN\gShare2']]}
 
     # stores the authenticated sessions
     self.authnsessions = {}
