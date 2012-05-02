@@ -380,8 +380,8 @@ class AuthN(object):
               '</h2></body></html>')
     elif self.binding == 'post':
       now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-      five_sec_from_now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+5))
-      samlresp = self._generate_response(now, five_sec_from_now, login,
+      one_min_from_now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+60))
+      samlresp = self._generate_response(now, one_min_from_now, login,
                                          req_id, location,
                                          saml_oissuer, True)
       resp = ('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"'
