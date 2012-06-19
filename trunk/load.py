@@ -172,6 +172,7 @@ class TimeSet(object):
     return sum(self.good_times) / float(self.NumGood())
 
   def MedianGood(self):
+    self.good_times.sort()
     l = self.NumGood()
     if l % 2 == 1:
       return self.good_times[(l - 1)/2]
