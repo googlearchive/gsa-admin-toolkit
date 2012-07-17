@@ -637,12 +637,16 @@ class AuthN(object):
         raise SignatureError("couldn't find root node")
 
       # load the private key
-      dsigctx = xmlsec.DSigCtx()
       key = xmlsec.cryptoAppKeyLoad(self.key_file, xmlsec.KeyDataFormatPem,
                                     self.key_pwd, None, None)
       if not key:
         raise SignatureError('failed to load the private key %s' % self.key_file)
-      dsigctx.signKey = key
+
+      keymngr = xmlsec.KeysMngr()
+      xmlsec.cryptoAppDefaultKeysMngrInit(keymngr)
+      xmlsec.cryptoAppDefaultKeysMngrAdoptKey(keymngr, key)
+      dsigctx = xmlsec.DSigCtx(keymngr)
+
       if key.setName(self.key_file) < 0:
         raise SignatureError('failed to set key name')
 
