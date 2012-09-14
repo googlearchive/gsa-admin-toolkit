@@ -55,6 +55,9 @@ this.
 6. Trigger database synchronization
 ./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD --database_sync --sources=DB_NAME
 
+7. Run custom support script provided by Google Support
+./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD -m -f ./sscript.txt -o ./out.txt -t 300
+
 TODO(jlowry): add in functionality from adminconsole.py:
 pause/resume crawl, get crawl status, shutdown.
 """
@@ -609,6 +612,75 @@ class gsaWebInterface:
       log.debug("Collection Totals: %s URLs, %s Error URLs", numsurls, numeurls)
     # Here you can plug any type of MySQL logging method/etc
 
+  def runCusSscript(self, sscript_file, out_fd, timeout=180):
+    """Run custom support script.
+
+       Args:
+         sscript_file: file containing the encrypted custom support script
+         out_fd: file descriptor for the output file
+         timeout: timeout value in secs to wait for support script to complete
+    """
+    if not os.path.exists(sscript_file):
+      log.error("File %s does not exist", sscript_file)
+      sys.exit(1)
+    ssfd = open(sscript_file)
+    ss_str = ssfd.read()
+    ssfd.close()
+
+    self._login()
+    security_token = self.getSecurityToken('cache')
+    fields = [('security_token', security_token),
+              ('actionType', 'supportScripts'),
+              ('action', 'run'),
+              ('scriptType', 'customFile'),
+              ('run', 'Run support script')]
+    files = [('importFileName', 'cus_sscript_file', ss_str)]
+    content_type, body = self._encode_multipart_formdata(fields,files)
+    headers = {'User-Agent': 'python-urllib2', 'Content-Type': content_type}
+    request = urllib2.Request(self.baseURL, body, headers)
+    log.info("Submitting support script...")
+    result = self._openurl(request)
+    content = result.read()
+    if content.count("Support script submission failed"):
+      log.error("Support script submission failed")
+      sys.exit(2)
+    log.info("Support script submitted")
+
+    # support script submitted, check whether output is available
+    
+    param = urllib.urlencode({"actionType": "supportScripts"})
+    request = urllib2.Request(self.baseURL + "?" + param)
+    tm = 0
+    sleeptime = 4
+    while True:
+      result = self._openurl(request)
+      content = result.read()
+      if not content.count("A support script is running"):
+        log.info("output is ready")
+        break
+      log.info("Support script still running...")
+      time.sleep(sleeptime)
+      tm += sleeptime
+      if tm > timeout:
+        log.error("Support script timed out")
+        sys.exit(1)
+
+    # support script run is done, download the output
+    param = urllib.urlencode({"actionType": "supportScripts",
+                              "security_token": security_token,
+                              "download": "Download results from previous run",
+                              "action": "download"})
+    request = urllib2.Request(self.baseURL, param)
+    result = self._openurl(request)
+    content = result.read()
+    if content.count("Unable to download results"):
+      log.error("Unable to download results")
+      sys.exit(1)
+    elif content.count("Error when trying to retrieve support script output"):
+      log.error("Error when trying to retrieve support script output")
+      sys.exit(1)
+
+    out_fd.write(content)
 
 ###############################################################################
 # MAIN
@@ -632,8 +704,8 @@ if __name__ == "__main__":
   parser.add_option("-g", "--sign-password", dest="signpassword",
           help="Sign password for signing/import/export")
 
-  parser.add_option("--cache-timeout", dest="cachetimeout",
-          help="Value for Authorization Cache Timeout")
+  parser.add_option("-t", "--timeout", dest="timeout",
+          help="Timeout value (for Authz cache and support script)")
 
   parser.add_option("--max-hostload", dest="maxhostload",
           help="Value for max number of concurrent authz requests per server")
@@ -683,6 +755,9 @@ if __name__ == "__main__":
   actionOptionsGrp.add_option("-c", "--get-collection-report", dest="getcollection",
                               action="store_true", help="Get GSA Collection Statistics")
 
+  actionOptionsGrp.add_option("-m", "--custom-sscript", dest="cus_sscript",
+                              action="store_true", help="Run custom support script")
+
   parser.add_option_group(actionOptionsGrp)
 
   # gsaHostOptions
@@ -725,6 +800,14 @@ if __name__ == "__main__":
 
     if len(options.signpassword) < 8:
       log.error("Signing password must be 8 characters or longer")
+      sys.exit(3)
+
+  if options.timeout:
+    try:
+      timeout = int(options.timeout)
+      log.info("Value of timeout: %d" % (timeout))
+    except ValueError:
+      log.error("Timeout is not an integer: %s" % (timeout))
       sys.exit(3)
 
   action = None
@@ -792,6 +875,12 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "getcollection"
+  if options.cus_sscript:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "cus_sscript"
   if not action:
       log.error("No action specified")
       sys.exit(3)
@@ -860,13 +949,6 @@ if __name__ == "__main__":
 
   elif action == "setaccesscontrol":
     log.info("Setting access control")
-    if options.cachetimeout:
-      try:
-        cachetimeout = int(options.cachetimeout)
-        log.info("Value of cache timeout: %d" % (cachetimeout))
-      except ValueError:
-        log.error("Cache timeout is not an integer: %s" % (cachetimeout))
-        sys.exit(3)
     if options.maxhostload:
       try:
         maxhostload = int(options.maxhostload)
@@ -875,9 +957,9 @@ if __name__ == "__main__":
         log.error("Max hostload is not an integer: %s" % (maxhostload))
         sys.exit(3)
 
-    if options.maxhostload and options.cachetimeout:
+    if options.maxhostload and options.timeout:
       gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
-      gsaWI.setAccessControl(options.maxhostload, options.cachetimeout)
+      gsaWI.setAccessControl(options.maxhostload, options.timeout)
     elif options.maxhostload:
       gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
       gsaWI.setAccessControl(options.maxhostload)
@@ -956,3 +1038,21 @@ if __name__ == "__main__":
       collection = options.collection
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
     gsaWI.getCollection(collection)
+  elif action == "cus_sscript":
+    if not options.inputFile:
+      log.error("Input file not given")
+      sys.exit(3)
+    if not options.outputFile:
+      log.error("Output file not given")
+      sys.exit(3)
+    try:
+      f = open(options.outputFile, 'w')
+    except IOError:
+      log.error("unable to open %s to write" % options.outputFile)
+      sys.exit(3)
+
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    if options.timeout:
+      gsaWI.runCusSscript(options.inputFile, f, timeout)
+    else:
+      gsaWI.runCusSscript(options.inputFile, f)
