@@ -1,4 +1,7 @@
 #!/usr/bin/python
+import sys
+reload(sys)
+sys.setdefaultencoding("utf-8")
 #
 # Copyright 2010 Google Inc. All Rights Reserved.
 #
@@ -55,9 +58,18 @@ for that connector, and a base64 encoded version of pickled storage data.
 
 NOTE:  The protocol between the GSA and ConnectorManager is subject to change
        but is verified to work on GSA 6.2
+       
+       
+NOTE:  You may need to change the default encoding of python:
+edit edit /usr/lib/pythonX.X/site.py
+change
+  encoding = "ascii"
+to
+  encoding = "UTF-8"
+
 
 usage:
-  ./ConnectorManager.py
+  ./connectormanager.py
     --debug           Show debug logs
     --use_ssl         Start with SSL using ssl.crt and ssl.key in PEM format;
                       the ssl.key must not be password protected
@@ -153,7 +165,7 @@ class ConnectorManager(object):
   def __init__(self, connector_classes, debug_flag, use_ssl, port):
     self.debug_flag = debug_flag
     cherrypy.config.update({'global': {'server.socket_host': '0.0.0.0'}})
-    self.connector_classes = connector_classes
+    self.connector_classes = connector_classes 
     if use_ssl:
       cherrypy.config.update({'global': {
           'server.ssl_certificate': 'ssl.crt',
@@ -218,7 +230,7 @@ class ConnectorManager(object):
     if self.gsa == '':
       self.gsa = cherrypy.request.remote.ip
     self.logger().debug('testConnectivity  %s' %data)
-    return ('<CmResponse><Info>%s</Info>'
+    return ('<CmResponse><Info>%s</Info><StatusCode>0</StatusCode>'
             '<StatusId>0</StatusId></CmResponse>') % self._getPlatformInfo()
   testConnectivity.exposed = True
 
@@ -226,7 +238,7 @@ class ConnectorManager(object):
     self.logger().debug(('getConnectorList '))
     connector_types = ''
     for connector_type in self.connector_classes:
-      connector_types += '<ConnectorType>%s</ConnectorType>' % connector_type
+      connector_types += '<ConnectorType version="1.0.6a ${TODAY}">%s</ConnectorType>' % connector_type
 
     return ('<CmResponse>'
             '<Info>%s</Info>'
@@ -240,6 +252,15 @@ class ConnectorManager(object):
     self.logger().debug('getConfigForm ConnectorType=%s' % ConnectorType)
     return self.connector_classes[ConnectorType].getConfigForm()
   getConfigForm.exposed = True
+
+  def getConnectorLogLevel(self):
+    self.logger().debug('getConnectorLogLevel')
+    return ('<CmResponse><StatusId>0</StatusId><Level>OFF</Level><Info>Connector Logging level is OFF</Info></CmResponse>')
+  getConnectorLogLevel.exposed = True
+
+  def getFeedLogLevel(self):
+    return ('<CmResponse><StatusId>0</StatusId><Level>OFF</Level><Info>Feed Logging level is OFF</Info></CmResponse>')
+  getFeedLogLevel.exposed = True
 
   def setConnectorConfig(self):
     #<ConnectorConfig>
@@ -541,9 +562,6 @@ class ConnectorManager(object):
       if self.debug_flag:
         logger.setLevel(logging.DEBUG)
         ch.setLevel(logging.DEBUG)
-      else:
-        logger.setLevel(logging.INFO)
-        ch.setLevel(logging.INFO)
       self.loggers[src] = logger
     return self.loggers[src]
 
@@ -629,7 +647,7 @@ class ConnectorManager(object):
       print 'Error Opening Config File'
 
   def _getPlatformInfo(self):
-    return 'Google Enterprise Connector Manager 2.0.2 Python %s; %s %s (%s)' % (
+    return 'Google Search Appliance Python Connector Manager 3.0.2 (%s; %s %s (%s))' % (
         platform.python_version(), platform.system(),
         platform.release(), platform.machine())
 

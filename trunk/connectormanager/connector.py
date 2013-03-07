@@ -367,44 +367,19 @@ class Connector(object):
     Returns:
       The GSA response status as a string.
     """
-    def encode_multipart_formdata(xmldata):
-      BOUNDARY = '<<'
-      CRLF = '\r\n'
-      L = []
-      L.append('--' + BOUNDARY)
-      L.append('Content-Disposition: form-data; name="datasource"')
-      L.append('Content-Type: text/plain')
-      L.append('')
-      L.append(self._name)
-
-      L.append('--' + BOUNDARY)
-      L.append('Content-Disposition: form-data; name="feedtype"')
-      L.append('Content-Type: text/plain')
-      L.append('')
-      L.append(feed_type)
-
-      L.append('--' + BOUNDARY)
-      L.append('Content-Disposition: form-data; name="data"')
-      L.append('Content-Type: text/xml')
-      L.append('')
-      L.append(xmldata)
-      L.append('')
-      L.append('--' + BOUNDARY + '--')
-      L.append('')
-      return ('multipart/form-data; boundary=%s' % BOUNDARY, CRLF.join(L))
 
     self.logger().debug('Posting Aggregated Feed to : %s' % self._name)
-    xmldata = ('<?xml version=\'1.0\' encoding=\'UTF-8\'?>'
-               '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" '
-               '"gsafeed.dtd">'
+    xmldata = ('<?xml version="1.0" encoding="UTF-8" ?>'
+               '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "gsafeed.dtd">'
                '<gsafeed>'
                '<header>'
                '<datasource>%s</datasource>'
                '<feedtype>%s</feedtype>'
                '</header>'
                '<group>%s</group>'
-               '</gsafeed>') % (self._name, feed_type, data)
-    content_type, body = encode_multipart_formdata(xmldata)
+               '</gsafeed>') % (str(self._name), str(feed_type), data)
+            
+    content_type, body = self.encode_multipart_formdata(feed_type,xmldata)
     headers = {}
     headers['Content-type'] = content_type
     headers['Content-length'] = str(len(body))
@@ -419,7 +394,35 @@ class Connector(object):
     status = urllib2.urlopen(request_url).read()
     self.logger().debug("Response status from GSA [%s]" % status)
     return status
+  
 
+
+  def encode_multipart_formdata(self,feed_type,xmldata):
+    BOUNDARY = '----------boundary_of_feed_data$'
+    CRLF = '\r\n'
+    L = []
+    L.append('--' + BOUNDARY)
+    L.append('Content-Disposition: form-data; name="datasource"')
+    L.append('')
+    L.append(str(self._name))
+
+    L.append('--' + BOUNDARY)
+    L.append('Content-Disposition: form-data; name="feedtype"')
+    L.append('')
+    L.append(feed_type)
+
+    L.append('--' + BOUNDARY)
+    L.append('Content-Disposition: form-data; name="data"')
+    L.append('Content-Type: application/xml')
+    L.append('')
+
+    L.append(xmldata)
+    L.append('')
+    L.append('--' + BOUNDARY + '--')
+    L.append('')
+    #return ('multipart/form-data; boundary=%s' % BOUNDARY, unicode(CRLF.join(L),'UTF-8').encode('UTF-8'))
+    return ('multipart/form-data; boundary=%s' % BOUNDARY, CRLF.join(L))
+  
   def pushFeed(self, feed):
     """Pushes a feed (as a Feed object) to the GSA.
 
