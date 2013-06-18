@@ -71,12 +71,13 @@ usage:
                       disabled on 6.2 GSA).  Setting should only be used with
                       --consumer_mech=static --gsa_host=
 
+    --exclude_keyinfo Exclude the <ds:KeyInfo/> node
 
 This script runs a web server on port 28080 that allows you to test the
 Authn SPI on the Google Search Appliance.
 
-The authn.py script is basically a SAML IDP server which prompts users
-for BASIC username/password info and then complies with SAML2.0
+The authn.py script is basically a SAML IDP server which prompts the users
+with FORM username/password info and then complies with SAML2.0
 specifications for POST and artifact binding.
 
 It is not designed to handle full production load but rather just as a
@@ -112,6 +113,26 @@ xmlsec, and PyXMLSec. The user must install these in advance in order to use
 POST binding.
 PyXMLSec is available at http://pyxmlsec.labs.libre-entreprise.org/
 
+# apt-get install python-cherrypy3 libxmlsec1-openssl libxml2 python-libxml2 python-libxml2-dbg  
+                  libxml2-dev  libxslt-dev libltdl-dev
+
+#then a manual install of xmlsec from source as sudo
+# http://www.aleksey.com/xmlsec/download/xmlsec1-1.2.18.tar.gz
+# gzip -d
+# untar
+# cd xmlsec...
+# sudo ./configure
+# sudo make
+# sudo make install
+
+#then install pyxmlsec from source as sudo
+# svn checkout svn://labs.libre-entreprise.org/svnroot/pyxmlsec
+# cd trunk
+# ./setup.py
+#  (select build, select openssl)
+# ./setup.py 
+# (select install)
+
 This script requires the cherrypy v3 to be installed (v2 gives an error since
 quickstart is not available).
 
@@ -137,6 +158,7 @@ import zlib
 import cherrypy
 from xml.sax.saxutils import escape
 from socket import gethostname
+import cgi
 
 class SignatureError(Exception):
   pass
@@ -144,7 +166,7 @@ class SignatureError(Exception):
 class AuthN(object):
 
   def __init__(self, port, protocol, debug_flag, consumer_mech,
-               saml_issuer, gsa_host, binding, key_file, key_pwd, use_legacy):
+               saml_issuer, gsa_host, binding, cert_file, key_file, key_pwd, use_legacy, exclude_keyinfo):
     self.realm = "authn"
     self.protocol = protocol
     self.debug_flag = debug_flag
@@ -153,8 +175,10 @@ class AuthN(object):
     if gsa_host:
       self.gsa_host = gsa_host
     self.binding = binding
+    self.cert_file = cert_file
     self.key_file = key_file
     self.key_pwd = key_pwd
+    self.exclude_keyinfo = exclude_keyinfo
 
     log ('--------------------------------')
     log ('-----> Starting authn.py <------')
@@ -162,8 +186,8 @@ class AuthN(object):
 
     # authentication database in the form of:
     #  username: [password, [group1, group2,...]]
-    self.user_db = {'Administrator@ESODOMAIN': ['pass1', []],
-                    'Administrator': ['pass2', []],
+    self.user_db = {'administrator@ESODOMAIN': ['pass1', []],
+                    'administrator': ['pass2', []],
                     'user2@esodomain': ['pass1', ['esodomaingrp with space']],
                     'esodomain\gsa':   ['pass1', ['ESODOMAIN\gShare1', 'ESODOMAIN\gShare2']]}
 
@@ -172,9 +196,6 @@ class AuthN(object):
     self.recipients = {}
     self.login_request_ids = {}
     self.saml_issuer = saml_issuer
-    self.passwd_db = {}
-    for user in self.user_db:
-      self.passwd_db[user] = md5.new(self.user_db[user][0]).hexdigest()
 
   #Main landing page
   def index(self):
@@ -199,12 +220,6 @@ class AuthN(object):
     return indexHTML
   index.exposed = True
 
-  # Collects and verifies the username/password combos for BASIC authentication.
-  def authenticate(self):
-    if self.debug_flag:
-      log('Request Headers %s' % cherrypy.request.headers)
-    cherrypy.tools.basic_auth.callable(self.realm, self.passwd_db)
-    return cherrypy.request.login
 
   # Generates SAML 2.0 IDs randomly.
   def getrandom_samlID(self):
@@ -224,24 +239,62 @@ class AuthN(object):
     return ("", "", [])
 
     
-  # Collects the SAMLRequest, RelayState and prompts uses BASIC to prompt the
+  # Collects the SAMLRequest, RelayState and prompts uses FORM to prompt the
   # user.
-  def login(self, RelayState=None, SAMLRequest = None, SigAlg = None,
+  def login(self,error = None, RelayState=None, SAMLRequest = None, SigAlg = None,
             Signature = None):
-    # Ask the user for username/password
-    login = self.authenticate()
+    log('-----------  LOGIN -----------')   
+    if error == None:
+      error = ""
 
-    log('-----------  LOGIN BEGIN -----------')
+    if not( RelayState is None):
+      cherrypy.session['RelayState'] = RelayState
+      log(' RelayState' + str(RelayState))
+    if not (SAMLRequest is None):
+      cherrypy.session['SAMLRequest'] = SAMLRequest
+      log(' SAMLRequest' + str(SAMLRequest))
+
+    return """<html><body>
+         <center>
+         <font color=red>%s</font></br>
+               <form method="post" action="/authenticate">
+               Username: <input type="text" name="username" value="" /><br />
+               Password: <input type="password" name="password" /><br />
+               <input type="submit" value="Log in" />
+         </form>
+               </center></body></html>""" %error
+  login.exposed = True
+
+  def authenticate(self, username=None, password=None):
+    log('-----------  Authenticate -----------') 
+    if (username == None or password == None or username == '' or password == ''):
+      cherrypy.response.status = 302
+      cherrypy.response.headers['location'] = '/login?error=specify username+password'
+      return  
+
+    try: 
+      if password == self.user_db[username.lower()][0]:
+        log('Authentication successful for ' + username.lower())
+      else:
+        cherrypy.response.status = 302
+        cherrypy.response.headers['location'] = '/login?error=invalid username+password'
+        return
+    except KeyError:
+      cherrypy.response.status = 302
+      cherrypy.response.headers['location'] = '/login?error=invalid username+password'
+      return
+ 
+        
+    RelayState = cherrypy.session.get('RelayState')
+    SAMLRequest = cherrypy.session.get('SAMLRequest')
 
     if SAMLRequest is None:
       log('Received a request for authentication without SAMLRequest')
-
-      log('Authentication Succeeded')
-      log('-----------  LOGIN END  -----------')
+      log('-----------  Authenticate END  -----------')
 
       return ('<font color=\"darkgreen\">Authentication successful for: '
               '&quot;%s&quot;<br>However, SAMLRequest is None and we can\'t '
-              'proceed' %login)
+              'proceed' %username)
 
     # Now b64decode and inflate
     # XML parse out the result
@@ -296,7 +349,7 @@ class AuthN(object):
 
       # Stash the artifact associated with the user it in a table so that
       # when asked who an artifact belongs to, we know who the user is.
-      self.authnsessions[rand_art] = (login)
+      self.authnsessions[rand_art] = (username)
 
       if self.debug_flag:
         log('Parsed SAMLRequest: %s' %xmldoc.toprettyxml())
@@ -376,39 +429,54 @@ class AuthN(object):
     if self.binding == 'artifact':
       cherrypy.response.status = 302
       cherrypy.response.headers['location'] = location
+      log('Artifact Redirecting to: %s' %(location))
       return ('<html><title>Error</title><body><h2>Unable to redirect'
               '</h2></body></html>')
     elif self.binding == 'post':
       now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
       one_min_from_now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+60))
-      samlresp = self._generate_response(now, one_min_from_now, login,
+      samlresp = self._generate_response(now, one_min_from_now, username,
                                          req_id, location,
                                          saml_oissuer, True)
+
+      log(xml.dom.minidom.parseString(samlresp).toprettyxml())
+
+      if (self.debug_flag):
+        onload_action = '<body>'
+      else:
+        onload_action = '<body onload="document.forms[0].submit()">'
+    
       resp = ('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"'
               'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">'
               '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">'
-              '<body onload="document.forms[0].submit()">'
-              '<noscript>'
+        '<head>'
+          '<script>'
+        '</script>'
+        '</head>'
+              '%s'
+        '<p>Login Successful</p>'
               '<p>'
-              '<strong>Note:</strong> Since your browser does not support '
-              'JavaScript, you must press the Continue button once to proceed.'
+              '<strong>Note:</strong> Users do not see the encoded SAML response.  This page is'
+              ' normally posted immediately <em>body onload=document.forms[0].submit()</em>'
               '</p>'
-              '</noscript>'
               '<form action="%s" method="post">'
               '<div>'
-              '<input type="hidden" name="RelayState" value=""/>'
-              '<input type="hidden" name="SAMLResponse" value="%s"/>'
+              '<li>RelayState: <input type="text" name="RelayState" value="%s"/></li>'
+              '<li>SAMLResponse: <input type="text" name="SAMLResponse" value="%s"/></li>'
               '</div>'
-              '<noscript>'
               '<div>'
+        '<p><em>click continue within  30 seconds of ' +  now + '</em></p>'
               '<input type="submit" value="Continue"/>'
               '</div>'
-              '</noscript>'
               '</form>'
-              '</body></html>') % (location, base64.encodestring(samlresp))
+        '<br/>'
+              '<p>Decoded SAMLResponse</p>'
+        '<textarea rows="75" cols="120" style="font-size:10px">%s</div>'
+              '</body></html>') % (onload_action,location, RelayState, base64.encodestring(samlresp),cgi.escape(xml.dom.minidom.parseString(samlresp).toprettyxml()))
       log(resp)
+
       return resp
-  login.exposed = True
+  authenticate.exposed = True
 
   # The SAML artifiact service.
   # The GSA calls this and provides it the SAMLArt= ID that the auth.py sent
@@ -476,8 +544,8 @@ class AuthN(object):
     # If there is no username assoicated with the artifact, we should
     # show a SAML error response...this is a TODO, for now just show a message
     if (username is None):
-      log('ERROR: No user assoicated with: %s' % saml_artifact)
-      return 'ERROR: No user assoicated with: %s' % saml_artifact
+      log('ERROR: No user associated with: %s' % saml_artifact)
+      return 'ERROR: No user associated with: %s' % saml_artifact
 
     current_recipient = self.recipients[saml_artifact]
     login_req_id = self.login_request_ids[saml_artifact]
@@ -530,6 +598,15 @@ class AuthN(object):
     rand_id_assert = self.getrandom_samlID()
     sigtmpl = ''
     if signed:
+      if (self.exclude_keyinfo):
+        key_info = ''
+      else:
+        key_info = ('<ds:KeyInfo>'
+                    '<ds:X509Data>'
+                    '<ds:X509Certificate></ds:X509Certificate>'
+                    '</ds:X509Data>'
+                    '</ds:KeyInfo>')
+
       # if the response is to be signed, create a signature template
       sigtmpl = ('<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">'
                  '<ds:SignedInfo>'
@@ -548,10 +625,8 @@ class AuthN(object):
                  '</ds:Reference>'
                  '</ds:SignedInfo>'
                  '<ds:SignatureValue/>'
-                 '<ds:KeyInfo>'
-                 '<ds:KeyName/>'
-                 '</ds:KeyInfo>'
-                 '</ds:Signature>') % resp_rand_id
+                 '%s'
+                 '</ds:Signature>') % (resp_rand_id,key_info)
     grptmpl = ''
     if self.user_db[username][1]:
       log('looking for group info for user ' + username)
@@ -642,6 +717,10 @@ class AuthN(object):
       if not key:
         raise SignatureError('failed to load the private key %s' % self.key_file)
 
+      if xmlsec.cryptoAppKeyCertLoad(key, self.cert_file, xmlsec.KeyDataFormatPem) < 0:
+        print "Error: failed to load pem certificate \"%s\"" % self.cert_file
+        return self.cleanup(doc, dsigctx)
+
       keymngr = xmlsec.KeysMngr()
       xmlsec.cryptoAppDefaultKeysMngrInit(keymngr)
       xmlsec.cryptoAppDefaultKeysMngrAdoptKey(keymngr, key)
@@ -661,7 +740,6 @@ class AuthN(object):
       if doc:
         doc.freeDoc()
       xmlsec.cryptoShutdown()
-      xmlsec.cryptoAppShutdown()
       xmlsec.shutdown()
       libxml2.cleanupParser()
 
@@ -704,25 +782,27 @@ def main():
   binding = "artifact"
   key_file = None
   key_pwd = None
+  cert_file = None
+  exclude_keyinfo = False
 
   def usage():
     print ('\nUsage: authn.py --debug --use_ssl '
            '--port=<port> --consumer_mech=(saml|static) '
            '--saml_issuer=<issuer> --gsa_host=<gsa_host> '
-           '--binding=(artifact|post) --key_file=<key_file> --key_blank_pwd '
-           '--use_legacy\n')
+           '--binding=(artifact|post) --key_file=<key_file> --cert_file=<cert_file> '
+           '--key_blank_pwd --use_legacy --exclude_keyinfo\n')
 
   try:
     opts, args = getopt.getopt(sys.argv[1:], None,
                                ["debug", "use_ssl", "port=",
                                 "consumer_mech=", "saml_issuer=", "gsa_host=",
-                                "binding=", "key_file=", "key_blank_pwd",
-                                "use_legacy"])
+                                "binding=", "key_file=", "cert_file=", "key_blank_pwd",
+                                "use_legacy", "exclude_keyinfo"])
   except getopt.GetoptError:
     usage()
     sys.exit(1)
 
-  cherrypy.config.update({'global':{'log.screen': False}})
+  cherrypy.config.update({'global':{'log.screen': False, "tools.sessions.on": "True"}})
   for opt, arg in opts:
     if opt == "--debug":
       debug_flag = True
@@ -738,7 +818,7 @@ def main():
       protocol = "https"
       cherrypy.config.update({"global": {
           "server.ssl_certificate": "ssl.crt",
-          "server.ssl_private_key": "ssl.key",}})
+          "server.ssl_private_key": "ssl.key"}})
     if opt == "--port":
       port = int(arg)
       cherrypy.config.update({"global": {"server.socket_port": port}})
@@ -746,10 +826,14 @@ def main():
       binding = arg
     if opt == "--key_file":
       key_file = arg
+    if opt == "--cert_file":
+      cert_file = arg
     if opt == "--key_blank_pwd":
       key_pwd = ''
     if opt == "--use_legacy":
       use_legacy = True
+    if opt == "--exclude_keyinfo":
+      exclude_keyinfo = True
 
   if consumer_mech == "static":
     if gsa_host is None:
@@ -776,8 +860,8 @@ def main():
       key_pwd = getpass.getpass('Password for %s: ' % key_file)
 
   cherrypy.quickstart(AuthN(cherrypy.server.socket_port, protocol, debug_flag,
-                            consumer_mech, saml_issuer, gsa_host, binding,
-                            key_file, key_pwd, use_legacy))
+                            consumer_mech, saml_issuer, gsa_host, binding,cert_file,
+                            key_file, key_pwd, use_legacy, exclude_keyinfo))
 
 if __name__ == '__main__':
   main()
