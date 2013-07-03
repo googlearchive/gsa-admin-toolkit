@@ -858,6 +858,10 @@ def main():
       sys.exit(1)
     elif key_pwd is None:
       key_pwd = getpass.getpass('Password for %s: ' % key_file)
+    if not cert_file:
+      log('Specify a public key (--cert_file=)')
+      usage()
+      sys.exit(1)
 
   cherrypy.quickstart(AuthN(cherrypy.server.socket_port, protocol, debug_flag,
                             consumer_mech, saml_issuer, gsa_host, binding,cert_file,
