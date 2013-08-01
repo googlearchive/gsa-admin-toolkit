@@ -1,4 +1,4 @@
-#!/usr/bin/python2.6
+#!/usr/bin/python
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -330,6 +330,25 @@ class gsaWebInterface:
     gsac.setXMLContents(content)
     return gsac
 
+  def getSecurityTokenFromContents(self, content):
+    """Gets the value of the security_token hidden form parameter.
+
+    Args:
+      content: a string containing HTML contents
+
+    Returns:
+      A long string, required as a parameter when submitting the form.
+      Returns an empty string if security_token does not exist.
+    """
+    token_re = re.compile('name="security_token"[^>]*value="([^"]*)"', re.I)
+    match = token_re.search(content)
+    if match:
+      security_token = match.group(1)
+      log.debug('Security token is: %s' % (security_token))
+      return security_token
+    else:
+      return ""
+
   def getSecurityToken(self, actionType):
     """Gets the value of the security_token hidden form parameter.
 
@@ -408,6 +427,59 @@ class gsaWebInterface:
         result = self._openurl(request)
       except:
         log.error("Unable to sync %s properly" % database)
+
+  def exportAllUrls(self, out):
+    """Export the list of all URLs
+
+    Args:
+      out: a File, the file to write to.
+    """
+    self._login()
+    security_token = self.getSecurityToken('exportAllUrls')
+    log.info("Generating the list of all URLs")
+    param = urllib.urlencode({'actionType' : 'exportAllUrls',
+                              'action' : 'generate',
+                              'goodURLs' : '',
+                              'security_token' : security_token,
+                              'filterMode' : 'all_urls' })
+    request = urllib2.Request(self.baseURL, param)
+
+    try:
+      result = self._openurl(request)
+      seurity_token = self.getSecurityTokenFromContents(result.read())
+      #output = result.read()
+      #out.write(output)
+    except Exception, e:
+      log.error("Unable to generate th list of All URLs")
+      log.error(e)
+
+    while 1:
+      param = urllib.urlencode({'actionType' : 'exportAllUrls',
+                                'security_token': security_token})
+      request = urllib2.Request(self.baseURL, param)
+      result = self._openurl(request)
+      generating_msg = '<input type="submit" name="generate" id="generate" disabled value="Generating...">'
+      content = result.read()
+      security_token = self.getSecurityTokenFromContents(content)
+      if content.find(generating_msg) == -1:
+        log.info("The list has been generated.")
+        break
+      else:
+        log.info("Still generating the list.  Sleep for 10 seconds...")
+        time.sleep(10)
+
+    log.info("Downloading the list of all URLs")
+    param = urllib.urlencode({'actionType' : 'exportAllUrls',
+                              'action' : 'download',
+                              'security_token': security_token})
+    request = urllib2.Request(self.baseURL, param)
+    try:
+      result = self._openurl(request)
+      output = result.read()
+      out.write(output)
+    except Exception, e:
+      log.error("Unable to download the list")
+      log.error(e)
 
   def exportKeymatches(self, frontend, out):
     """Export all keymatches for a frontend.
@@ -738,7 +810,10 @@ if __name__ == "__main__":
            help="Set Access Control settings")
 
   actionOptionsGrp.add_option("-l", "--all_urls", dest="all_urls",
-          help="Export all URLs from GSA", action="store_true")
+          help="Export all URLs from GSA using Crawl Diagnostics", action="store_true")
+
+  actionOptionsGrp.add_option("-L", "--export_all_urls", dest="export_all_urls",
+                              help="Export All URLs using Export URLs", action="store_true")
 
   actionOptionsGrp.add_option("-d" ,"--database_sync", dest="database_sync",
                               help="Sync databases", action="store_true")
@@ -845,6 +920,12 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "all_urls"
+  if options.export_all_urls:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action="export_all_urls"
   if options.database_sync:
     if action:
       log.error("Specify only one action")
@@ -982,6 +1063,21 @@ if __name__ == "__main__":
       gsaWI.getAllUrls(f)
       f.close()
       log.info("All URLs exported.")
+
+  elif action == "export_all_urls":
+    if not options.outputFile:
+      log.error("Output file not given")
+      sys.exit(3)
+    try:
+      f = open(options.outputFile, 'w')
+    except IOError:
+      log.error("unable to open %s to write" % options.outputFile)
+      sys.exit(3)
+
+    log.info("Exporting all URLs to %s" % options.outputFile)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI.exportAllUrls(f)
+    f.close()
 
   elif action == "database_sync":
     if not options.sources:
