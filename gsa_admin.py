@@ -395,7 +395,7 @@ class gsaWebInterface:
                                                 'actionType': 'cache',
                                                 'basicAuthChallengeType': 'auto',
                                                 'authzServiceUrl': '',
-                                                'overallAuthzTimeout': '20.0',
+                                                'queryProcessingTime': '20.0',
                                                 'requestBatchTimeout': '5.0',
                                                 'singleRequestTimeout': '2.5',
                                                 'maxHostload': maxhostload,
