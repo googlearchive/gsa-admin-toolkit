@@ -72,6 +72,7 @@ import sys
 import xml.dom.minidom
 import hashlib
 import hmac
+import json
 import codecs
 import urllib2
 import urllib
@@ -90,7 +91,7 @@ class NullHandler(logging.Handler):
     def emit(self, record):
         pass
 
-DEFAULTLOGLEVEL=logging.INFO
+DEFAULTLOGLEVEL=logging.DEBUG
 log = logging.getLogger(__name__)
 log.addHandler(NullHandler())
 
@@ -189,7 +190,8 @@ class gsaConfig:
       log.debug("Signature matches")
       return 1
     else:
-      log.debug("Signature does not match")
+      log.debug("Signature does not match %s vs %s" %
+                (signatureValue, myhmac.hexdigest()))
       return None
 
 
@@ -250,15 +252,32 @@ class gsaWebInterface:
       request = urllib2.Request(self.baseURL,
                                 urllib.urlencode(
           {'actionType' : 'authenticateUser',
+           # for 7.0 or older
            'userName' : self.username,
-           'password' : self.password}))
+           'password' : self.password,
+           # for 7.2 and newer.  Having both doesn't hurt
+           'reqObj' : json.dumps([None, self.username, self.password, None, 1]),
+           }))
 
       log.debug("Logging in as %s..."  % self.username)
       result = self._openurl(request)
       resultString = result.read()
+      # Pre 7.2 has "Google Search Appliance  &gt;Home"
+      # 7.2 and later returns JSON like object
       home = re.compile("Google Search Appliance\s*&gt;\s*Home")
-      if not home.search(resultString):
-        log.error("Login failed")
+      home72 = re.compile('"xsrf": \[null,"security_token","')
+      if  home.search(resultString):
+        log.debug("7.0 or older")
+        self.is72 = False
+      elif home72.search(resultString):
+        log.debug("7.2 or newer")
+        # The first line is junk to prevent some action on browsers:  )]}',
+        # Just skip it.
+        response = json.loads(resultString[5:])
+        log.info("Security token is: " + response["xsrf"][2])
+        self.is72 = True
+      else:
+        log.error("Login failed: " + resultString)
         sys.exit(2)
 
       log.debug("Successfully logged in")
@@ -437,11 +456,20 @@ class gsaWebInterface:
     self._login()
     security_token = self.getSecurityToken('exportAllUrls')
     log.info("Generating the list of all URLs")
-    param = urllib.urlencode({'actionType' : 'exportAllUrls',
-                              'action' : 'generate',
-                              'goodURLs' : '',
-                              'security_token' : security_token,
-                              'filterMode' : 'all_urls' })
+    if self.is72:
+      param = urllib.urlencode({'security_token' : security_token,
+                                'filterMode'     : 'all_urls',
+                                'goodURLs'       : '',
+                                'actionType'     : 'exportAllUrls',
+                                'exportAction'   : 'generate',
+                                'generate'       : 'Generate the gzip file',
+                                })
+    else:
+      param = urllib.urlencode({'actionType' : 'exportAllUrls',
+                                'action' : 'generate',
+                                'goodURLs' : '',
+                                'security_token' : security_token,
+                                'filterMode' : 'all_urls'})
     request = urllib2.Request(self.baseURL, param)
 
     try:
@@ -450,7 +478,7 @@ class gsaWebInterface:
       #output = result.read()
       #out.write(output)
     except Exception, e:
-      log.error("Unable to generate th list of All URLs")
+      log.error("Unable to generate the list of All URLs")
       log.error(e)
 
     while 1:
@@ -458,19 +486,27 @@ class gsaWebInterface:
                                 'security_token': security_token})
       request = urllib2.Request(self.baseURL, param)
       result = self._openurl(request)
-      generating_msg = '<input type="submit" name="generate" id="generate" disabled value="Generating...">'
+      if self.is72:
+        generating_msg = '<input type="submit" name="generate" id="generate" disabled class="hb-r-N nd-Ld-re" value="Generating...">'
+      else:
+        generating_msg = '<input type="submit" name="generate" id="generate" disabled value="Generating...">'
       content = result.read()
       security_token = self.getSecurityTokenFromContents(content)
       if content.find(generating_msg) == -1:
         log.info("The list has been generated.")
+        log.debug("content is " + content)
         break
       else:
         log.info("Still generating the list.  Sleep for 10 seconds...")
         time.sleep(10)
 
+    # 7.0 or older default
+    exportActionStr = 'action'
+    if self.is72:
+      exportActionStr = 'exportAction'
     log.info("Downloading the list of all URLs")
     param = urllib.urlencode({'actionType' : 'exportAllUrls',
-                              'action' : 'download',
+                              exportActionStr : 'download',
                               'security_token': security_token})
     request = urllib2.Request(self.baseURL, param)
     try:
@@ -489,12 +525,17 @@ class gsaWebInterface:
       out: a File, the file to write to.
     """
     self._login()
+    security_token = self.getSecurityToken('viewFrontends')
     log.info("Retrieving the keymatch file for %s" % frontend)
     param = urllib.urlencode({'actionType' : 'frontKeymatchImport',
+                              'security_token' : security_token,
                               'frontend' : frontend,
                               'frontKeymatchExportNow': 'Export KeyMatches Now',
                               'startRow' : '1', 'search' : ''})
-    request = urllib2.Request(self.baseURL + "?" + param)
+    if self.is72:
+      request = urllib2.Request(self.baseURL, param)
+    else:
+      request = urllib2.Request(self.baseURL + "?" + param)
     try:
       result = self._openurl(request)
       output = result.read()
@@ -502,7 +543,6 @@ class gsaWebInterface:
     except Exception, e:
       log.error("Unable to retrieve Keymatches for %s" % frontend)
       log.error(e)
-
   def exportSynonyms(self, frontend, out):
     """Export all Related Queries for a frontend.
 
@@ -511,12 +551,17 @@ class gsaWebInterface:
       out: a File, the file to write to.
     """
     self._login()
+    security_token = self.getSecurityToken('viewFrontends')
     log.info("Retrieving the Related Queries file for %s" % frontend)
     param = urllib.urlencode({'actionType' : 'frontSynonymsImport',
+                              'security_token': security_token,
                               'frontend' : frontend,
                               'frontSynonymsExportNow': 'Export Related Queries Now',
                               'startRow' : '1', 'search' : ''})
-    request = urllib2.Request(self.baseURL + "?" + param)
+    if self.is72:
+      request = urllib2.Request(self.baseURL, param)
+    else:
+      request = urllib2.Request(self.baseURL + "?" + param)
     try:
       result = self._openurl(request)
       output = result.read()
@@ -608,10 +653,13 @@ class gsaWebInterface:
 
     result = self._openurl(request)
     content = result.read()
-
     nodes = re.findall("row.*(<b>.*</b>)", content)
+    if self.is72 and "nd-ue-re" in content:
+      print "This is 7.2 or newer.  Just printing the whole output contents."
+      print content
+      return
     if not nodes:
-      log.error("Could not find any replicas...")
+      log.error("Could not find any replicas...\n%s" % content)
       exit(3)
 
     log.debug(nodes)
@@ -1025,7 +1073,7 @@ if __name__ == "__main__":
     if gsac.verifySignature(options.signpassword):
       log.info("XML Signature/HMAC matches supplied password" )
     else:
-      log.warn("XML Signature/HMAC does NOT matches supplied password" )
+      log.warn("XML Signature/HMAC does NOT match supplied password" )
       sys.exit(1)
 
   elif action == "setaccesscontrol":
