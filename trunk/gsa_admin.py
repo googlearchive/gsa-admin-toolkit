@@ -125,8 +125,8 @@ class gsaConfig:
     "Returns the contents of the XML file"
     return self.configXMLString.encode("utf-8")
 
-  def sign(self, password):
-    configXMLString = self.configXMLString
+  def computeSignature(self, password):
+    configXMLString = self.getXMLContents()
     # ugly removal of spaces because minidom cannot remove them automatically when removing a node
     configXMLString = re.sub('          <uam_dir>', '<uam_dir>', configXMLString)
     configXMLString = re.sub('</uam_dir>\n', '</uam_dir>', configXMLString)
@@ -134,23 +134,39 @@ class gsaConfig:
     doc = xml.dom.minidom.parseString(configXMLString)
     # Remove <uam_dir> node because new GSAs expect so
     uamdirNode = doc.getElementsByTagName("uam_dir").item(0)
-    globalConfigNode = uamdirNode.parentNode
-    globalConfigNode.removeChild(uamdirNode)
+    uamdirNode.parentNode.removeChild(uamdirNode)
+
+    uardataNode = doc.getElementsByTagName("uar_data").item(0)
+    uardataB64contents = uardataNode.firstChild.nodeValue.strip()+'\n'
+    if uardataB64contents != "\n":
+      log.debug("UAR data contains data.  Must be 7.0 or newer")
+      # replace <uar_data> node with "/tmp/tmp_uar_data_dir,hash"
+      # 1: Strip additional spaces at the end but we need the new line
+      #     to compute hash.
+      #    "AAAAAAAAAA==\n          ]]></uar_data>" <-- 10 spaces
+      uardataHash = hmac.new(password, uardataB64contents, hashlib.sha1).hexdigest()
+      # 2: Replace to <dummy file name, hash> with additional whitespaces.
+      uardataNode.firstChild.nodeValue = ("\n/tmp/tmp_uar_data_dir,"
+          + "%s\n          ") % (''+uardataHash)
+      log.debug("uar_data is replaced to %s" % uardataNode.toxml())
     # Get <config> node
     configNode = doc.getElementsByTagName("config").item(0)
     # get string of Node and children (as utf-8)
     configNodeXML = configNode.toxml()
     # Create new HMAC using user password and configXML as sum contents
-    myhmac = hmac.new(password, configNodeXML, hashlib.sha1)
+    return hmac.new(password, configNodeXML, hashlib.sha1).hexdigest()
+
+  def sign(self, password):
+    computedSignature=self.computeSignature(password)
+    configXMLString = self.getXMLContents()
+    doc = xml.dom.minidom.parseString(configXMLString)
 
     # Get <signature> node
     signatureNode = doc.getElementsByTagName("signature").item(0)
     signatureCDATANode = signatureNode.firstChild
     # Set CDATA/Text area to new HMAC
-    signatureCDATANode.nodeValue = myhmac.hexdigest()
-    # Put <uam_dir> back
-    globalConfigNode.appendChild(uamdirNode)
-    self.configXMLString = doc.toxml()
+    signatureCDATANode.nodeValue = computedSignature
+    self.setXMLContents(doc.toxml())
 
   def writeFile(self, filename):
     if os.path.exists(filename):
@@ -163,21 +179,9 @@ class gsaConfig:
     outputXMLFile.write(doc.toxml().replace("<eef>", "\n<eef>", 1))
 
   def verifySignature(self, password):
+    computedSignature = self.computeSignature(password)
     configXMLString = self.getXMLContents()
-    # ugly removal of spaces because minidom cannot remove them automatically when removing a node
-    configXMLString = re.sub('          <uam_dir>', '<uam_dir>', configXMLString)
-    configXMLString = re.sub('</uam_dir>\n', '</uam_dir>', configXMLString)
-
     doc = xml.dom.minidom.parseString(configXMLString)
-    # Remove <uam_dir> node because new GSAs expect so
-    uamdirNode = doc.getElementsByTagName("uam_dir").item(0)
-    uamdirNode.parentNode.removeChild(uamdirNode)
-    # Get <config> node
-    configNode = doc.getElementsByTagName("config").item(0)
-    # get string of Node and children (as utf-8)
-    configNodeXML = configNode.toxml()
-    # Create new HMAC using user password and configXML as sum contents
-    myhmac = hmac.new(password, configNodeXML, hashlib.sha1)
 
     # Get <signature> node
     signatureNode = doc.getElementsByTagName("signature").item(0)
@@ -186,12 +190,12 @@ class gsaConfig:
     # signatureValue may contain whitespace and linefeeds so we'll just ensure that
     # our HMAC is found within
 
-    if signatureValue.count(myhmac.hexdigest()) :
+    if signatureValue.count(computedSignature) :
       log.debug("Signature matches")
       return 1
     else:
       log.debug("Signature does not match %s vs %s" %
-                (signatureValue, myhmac.hexdigest()))
+                (signatureValue, computedSignature))
       return None
 
 
