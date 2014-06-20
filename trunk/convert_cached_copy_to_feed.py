@@ -47,6 +47,8 @@ import urllib
 import urllib2
 import zlib
 
+from xml.sax.saxutils import quoteattr
+
 #
 # constants for the script 
 # NOTE: you should modify the <datasource>-tag content
@@ -135,9 +137,9 @@ def main(argv):
         #print 'cached content is:\n%s' % compressed_cached_content
         # end debug output --------------------------------
         compressed_cached_content = DeflateAndBase64Encode(cached_content)
-        output_file.write("""    <record url="%s" mimetype="text/html">
+        output_file.write("""    <record url=%s mimetype="text/html">
       <content encoding="base64compressed">%s</content>
-    </record>\n""" % (url.rstrip(), compressed_cached_content))
+    </record>\n""" % (quoteattr(url.rstrip()), compressed_cached_content))
       output_file.write(feed_footer_text)
     except Exception, exception:
       print 'Got exception: %s' %exception
