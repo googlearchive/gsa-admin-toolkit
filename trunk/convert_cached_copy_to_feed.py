@@ -41,12 +41,14 @@ TODO(mblume)
 """
 
 import base64
+import codecs
 import getopt
 import sys
 import urllib
 import urllib2
 import zlib
 
+import xml.etree.cElementTree as ElementTree
 from xml.sax.saxutils import quoteattr
 
 #
@@ -54,7 +56,7 @@ from xml.sax.saxutils import quoteattr
 # NOTE: you should modify the <datasource>-tag content
 #
 # the xml header for the content feed
-feed_header_text = """<?xml version="1.0" encoding="UTF8"?>
+feed_header_text = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">
 <gsafeed>
   <header>\
@@ -129,21 +131,31 @@ def main(argv):
         cached_url = 'http://' + appliance_hostname + '/search?q=cache:'
         cached_url +=  urllib.quote_plus(url.rstrip())
         print 'Accessing URL - %s ' %cached_url
+
+        # since 7.0 (and possibly earlier), content is an XML document
+        # containing the cached content
         content = urllib2.urlopen(cached_url).read()
-        # go past the header that is added by the search appliance.
-        cached_content = content[content.find('<hr>')+len('<hr>'):]
+        gsp = ElementTree.fromstring(content)
+        blob = gsp.findall('.//BLOB')[0]
+        encoding = blob.get('encoding')
+        
+        cached_content = codecs.decode(
+            base64.b64decode(blob.text), encoding)
+        compressed_cached_content = DeflateAndBase64Encode(
+            codecs.encode(cached_content, 'utf-8'))
+
         # debug output------------------------------------
-  	    #print 'complete content from GSA is:\n%s' %content
+        #print 'complete content from GSA is:\n%s' % cached_content
         #print 'cached content is:\n%s' % compressed_cached_content
         # end debug output --------------------------------
-        compressed_cached_content = DeflateAndBase64Encode(cached_content)
         output_file.write("""    <record url=%s mimetype="text/html">
       <content encoding="base64compressed">%s</content>
     </record>\n""" % (quoteattr(url.rstrip()), compressed_cached_content))
-      output_file.write(feed_footer_text)
     except Exception, exception:
       print 'Got exception: %s' %exception
       sys.exit(1)
+    finally:
+      output_file.write(feed_footer_text)
   else:
     Usage()
     sys.exit(1)
