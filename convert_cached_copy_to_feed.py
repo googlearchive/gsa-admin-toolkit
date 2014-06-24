@@ -48,11 +48,12 @@ import urllib
 import urllib2
 import zlib
 
+import HTMLParser
 import xml.etree.cElementTree as ElementTree
 from xml.sax.saxutils import quoteattr
 
 #
-# constants for the script 
+# constants for the script
 # NOTE: you should modify the <datasource>-tag content
 #
 # the xml header for the content feed
@@ -123,6 +124,7 @@ def main(argv):
     # Real work begins here.
     #
     try:
+      parser = HTMLParser.HTMLParser()
       output_file = open(output_feed_file_name, 'w')
       output_file.write(feed_header_text)
       # get all cached urls:
@@ -136,11 +138,21 @@ def main(argv):
         # containing the cached content
         content = urllib2.urlopen(cached_url).read()
         gsp = ElementTree.fromstring(content)
+        content_type = gsp.findall('.//CACHE_CONTENT_TYPE')[0].text
         blob = gsp.findall('.//BLOB')[0]
         encoding = blob.get('encoding')
-        
-        cached_content = codecs.decode(
+
+        cache_response = codecs.decode(
             base64.b64decode(blob.text), encoding)
+
+        if content_type == 'text/plain':
+          # the blob that comes back is wrapped in HTML; unwrap it
+          pre_body = cache_response[cache_response.find('<pre>') + len('<pre>'):
+                                    cache_response.rfind('</pre>')]
+          cached_content = parser.unescape(pre_body)
+        else:
+          cached_content = cache_response
+
         compressed_cached_content = DeflateAndBase64Encode(
             codecs.encode(cached_content, 'utf-8'))
 
@@ -148,9 +160,10 @@ def main(argv):
         #print 'complete content from GSA is:\n%s' % cached_content
         #print 'cached content is:\n%s' % compressed_cached_content
         # end debug output --------------------------------
-        output_file.write("""    <record url=%s mimetype="text/html">
+        output_file.write("""    <record url=%s mimetype=%s>
       <content encoding="base64compressed">%s</content>
-    </record>\n""" % (quoteattr(url.rstrip()), compressed_cached_content))
+    </record>\n""" % (quoteattr(url.rstrip()), quoteattr(content_type),
+                      compressed_cached_content))
     except Exception, exception:
       print 'Got exception: %s' %exception
       sys.exit(1)
