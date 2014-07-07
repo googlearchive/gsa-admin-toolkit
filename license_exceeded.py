@@ -1,22 +1,23 @@
 #!/usr/bin/env python
-"""Checks four causes of license overflow and attempts to provide solution.
+"""Checks four causes of license overflow and attempts to provide a solution.
 
-The GSA requires a unique URL per documents, and some contents servers
-provide different links to the same documents, and this wastes
-license count. Once one of the issues below is identified, the content
-owner or the GSA administrator might be able to remediate the problem.
+The GSA requires a unique URL per documents, but some contents servers
+provide different links to the same documents, and this accounts for a
+high license count. Once one of the issues below is identified, the
+content owner or the GSA administrator might be able to remediate the
+problem.
 
 Note: when the license is overflown, depending on how valuable the
 content is, a solution is to acquire a larger license to make sure
-that no URLs is discarded from the index.
+that no URL is discarded from the index.
 
 Note: for the four issues described below, "coverage tuning", found in
 "Content Sources > Web Crawl > Coverage Tuning" can be used to
 mitigate the issue.
 
 
-1. There is a session ID in the URL. Whenever the GSA recrawls the
-content server, a new session ID might be included on the links
+Problem 1. There is a session ID in the URL. Whenever the GSA recrawls
+the content server, a new session ID might be included on the links
 found. The GSA is going to add URL and documents to the index that
 only differs from this unique ID.
 
@@ -26,9 +27,9 @@ only differs from this unique ID.
   the session ID.
 
 
-2. For the same document, several URLs are found which only differs
-by the order of their URL parameters. Each permutations is counted as a
-different document.
+Problem 2. For the same document, several URLs are found which only
+differs by the order of their URL parameters. Each permutations is
+counted as a different document.
 
 - The script shows the number of URLs which are duplicate only for
   their URL parameters. The script can additionaly show the URL paths
@@ -42,8 +43,8 @@ different document.
   and that no URLs are discarded.
 
 
-3. Some "directories" of URLs on some hosts have many more URLs than
-the customer expected.
+Problem 3. Some "directories" of URLs on some hosts have many more
+URLs than the customer expected.
 
 - The script will show a breakdown of "URL directories" and the number
   of URLs contained in said directory.
@@ -52,8 +53,8 @@ the customer expected.
   directory really are relevant or whether they should be discarded
   with block patterns.
 
-4. Some URLs found by the GSA only differs by case, and the content
-server serves the exact same URL for both.
+Problem 4. Some URLs found by the GSA only differs by case, and the
+content server serves the exact same URL for both.
 
 - The script shows the number of URLs and the number of URLs distinct
   only in case.
@@ -156,6 +157,7 @@ p.add_option(
 
 
 #### The interactive browser visualisation
+## Very basic at this point.
 p.add_option(
     '--browser',
     help=('Displays an interactive visualization in the browser. '
@@ -167,12 +169,12 @@ p.add_option(
           'Off by default.'),
     action='store_true', default=False)
 
+
 p.add_option(
     '--skip-header',
     help=('Exported URLs may have a header first line that needs '
           'to be skipped. On by default.'),
     action='store_true', default=True)
-
 
 #### Mostly internal options, no need to clutter the --help with these options
 # p.add_option(
