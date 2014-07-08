@@ -194,7 +194,7 @@ p.add_option(
           'are not detailed when parsing the file.'),
     default=10)
 
-CONF, _ = p.parse_args()
+CONF, ARGS = p.parse_args()
 CONF.error = 1
 CONF.max_node = 10**8
 
@@ -778,7 +778,17 @@ d3.select(self.frameElement).style("height", height + "px");
 
 def main():
 
-  gen = (l.strip().split('\t')[0] for l in sys.stdin)
+  if sys.stdin.isatty():
+    if ARGS:
+      print 'Reading from %s' % ARGS[0]
+      gen = (l.strip().split('\t')[0] for l in open(ARGS[0]))
+    else:
+      print ('Error: no data piped in stdin, no files on the command line: '
+             'please provide a GSA exported URLs  files as first argument.')
+      sys.exit(1)
+  else:
+    print 'Reading from the standard input.'
+    gen = (l.strip().split('\t')[0] for l in sys.stdin)
 
   if CONF.skip_header:
     next(gen)
