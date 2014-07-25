@@ -308,7 +308,8 @@ class gsaWebInterface:
     request = urllib2.Request(self.baseURL + "?" +
                               urllib.urlencode({'actionType': 'importExport',
                                                 'export': ' Import Configuration ',
-                                                'security_token': security_token,
+                                                'security_token' : security_token,
+                                                'a' : '1',
                                                 'passwordIn': configPassword}),
                               body, headers)
     log.info("Sending XML...")
@@ -339,6 +340,7 @@ class gsaWebInterface:
                               urllib.urlencode({'actionType': 'importExport',
                                                 'export': ' Export Configuration ',
                                                 'security_token': security_token,
+                                                'a': '1',
                                                 'password1': configPassword,
                                                 'password2': configPassword}))
 
@@ -384,7 +386,7 @@ class gsaWebInterface:
     """
     self._login()
     # request needs to be a GET not POST
-    url = '%s?actionType=%s' % (self.baseURL, actionType)
+    url = "%s?actionType=%s&a=1" % (self.baseURL, actionType)
     log.debug('Fetching url: %s' % (url))
     result = self._openurl(url)
     content = result.read()
@@ -415,6 +417,7 @@ class gsaWebInterface:
     #  saveSettings=Save+Settings
     request = urllib2.Request(self.baseURL,
                               urllib.urlencode({'security_token': security_token,
+                                                'a': '1',
                                                 'actionType': 'cache',
                                                 'basicAuthChallengeType': 'auto',
                                                 'authzServiceUrl': '',
@@ -462,6 +465,7 @@ class gsaWebInterface:
     log.info("Generating the list of all URLs")
     if self.is72:
       param = urllib.urlencode({'security_token' : security_token,
+                                'a'              : '1',
                                 'filterMode'     : 'all_urls',
                                 'goodURLs'       : '',
                                 'actionType'     : 'exportAllUrls',
@@ -487,7 +491,8 @@ class gsaWebInterface:
 
     while 1:
       param = urllib.urlencode({'actionType' : 'exportAllUrls',
-                                'security_token': security_token})
+                                'security_token' : security_token,
+                                'a' : '1'})
       request = urllib2.Request(self.baseURL, param)
       result = self._openurl(request)
       if self.is72:
@@ -511,7 +516,8 @@ class gsaWebInterface:
     log.info("Downloading the list of all URLs")
     param = urllib.urlencode({'actionType' : 'exportAllUrls',
                               exportActionStr : 'download',
-                              'security_token': security_token})
+                              'security_token' : security_token,
+                              'a' : '1'})
     request = urllib2.Request(self.baseURL, param)
     try:
       result = self._openurl(request)
@@ -533,6 +539,7 @@ class gsaWebInterface:
     log.info("Retrieving the keymatch file for %s" % frontend)
     param = urllib.urlencode({'actionType' : 'frontKeymatchImport',
                               'security_token' : security_token,
+                              'a' : '1',
                               'frontend' : frontend,
                               'frontKeymatchExportNow': 'Export KeyMatches Now',
                               'startRow' : '1', 'search' : ''})
@@ -558,7 +565,8 @@ class gsaWebInterface:
     security_token = self.getSecurityToken('viewFrontends')
     log.info("Retrieving the Related Queries file for %s" % frontend)
     param = urllib.urlencode({'actionType' : 'frontSynonymsImport',
-                              'security_token': security_token,
+                              'security_token' : security_token,
+                              'a' : '1',
                               'frontend' : frontend,
                               'frontSynonymsExportNow': 'Export Related Queries Now',
                               'startRow' : '1', 'search' : ''})
