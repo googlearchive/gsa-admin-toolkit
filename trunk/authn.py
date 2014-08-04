@@ -1,776 +1,871 @@
-#!/usr/bin/env python
+#!/usr/bin/python
+#
+# Copyright 2009 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This code is not supported by Google
+#
 
-"""A website with 4 pages, 3 of them are "secure" with different mechanism.
 
-               *********************************************
+"""Simple web server for testing the Authn
 
-   Please note that this script is not secure and is not even trying.
+usage:
+  ./authn.py
+    --debug           Show debug logs
 
-   For example, the cookie login form displays, by default, a valid username and
-   valid password to make it easy for the test user to get a authentication
-   cookie.
+    --use_ssl         Start with SSL using ssl.crt and ssl.key in PEM format;
+                      the ssl.key must not be password protected
 
-   The purpose of this script is to speed up the GSA configuration for secure
-   crawl or secure search in test use cases.
+    --port=           Set the listener port of the cherrypy webserver
+                      (default 28080)
 
-               *********************************************
+    --consumer_mech=  Specifies which mechanism to use to figure out where
+                      to redirect the SAMLRequest back to.
+                      The options for this switch:
+                      (saml|static)  default saml
 
-On the Crawling side, this "secure content server" enables configuring
-the GSA for testing:
-1. "Forms Authentication",
-2. and "Crawler access" (HTTP basic only, no NTLM),
-3. some customers also use a combination of HTTP basic + Crawler access.
+                      saml: Usually this information is
+                      contained in the SAMLRequest's decoded
+                      samlp:AuthnRequest/AssertionConsumerServiceURL parameter)
 
-There is one web page for each authentication above. Simply run the webserver
-without arguments and connects to the URL displayed on the console to get the
-list and test the authentication.
+                      static: hardcoded return path (defined in def login())
+                      Must specify --gsa_host for this option.
 
-For Secure Serving, this identity provider enables two "Universal Login Auth
-Mechanisms":
-4. "Cookie",
-5. "HTTP".
+    --gsa_host=       The Fully quaified hostname of the GSA for static redirecting.
+                      Using the qualified hostname is critical for this mechanism
+                      to work (otherwise the cookies will not be transmitted
+                      properly)
 
-Users and groups are added via the --users flag, this is a comma separated list
-of <username>:<password>. See the help string for this flag for more information
-about setting domains and groups.
+    --saml_issuer=    set the SAML_issuer ID parameter
+                      Default is set to authn.py
 
-6. This script can also generate a feed file for the 5 URLs served by this
-script, with all groups and users explicitly listed as ACLs. This the the --feed
-flag. You can either send the feed to the GSA or adapt it to match a specific
-customer context, before sending it to the GSA. This enables quick setup of
-secure search with per User ACLs:
+    --binding=        Specifies which SAML binding to use. The options are
+                      (artifact|post) default artifact.
 
-  Note: deny ACLs, inheritance and inheritance type are not supported.
-  More info below:
-  Http://www.google.com/support/enterprise/static/gsa/docs/admin/72/gsa_doc_set/feedsguide/feedsguide.html#1084066
+                      artifact: This script will expose /login and
+                      /artifact_service, and the GSA should be configured to use
+                      these appropriately.
 
-This script enables 2 ways for the GSA to resolve the groups of a user to match
-the per user ACLs:
+                      post: This script will expose /login, and the GSA should
+                      be configured to use this /login as well as a public key
+                      associated with the private key given by --key_file.
 
-7. "GroupsDB": the script can format the users and groups read from the --user
-  flag in the Groups XML feed format suitable to generate a GroupsDB on the
-  GSA. Then use another script to send the groups feed to the GSA. Use the flag
-  --groupsdb to get the XML feed.
+    --key_file=       The private key in PEM format to use for POST binding. A
+                      prompt will appear for the password.
 
-8. "Cookie Cracking": whenever the user is logged in, the default behavior is to
-  include, in the response headers, the X-Username, and X-Groups headers with
-  the values (a.k.a. "cookie cracking"). This enables for instance:
+    --key_blank_pwd   Assume a blank password for the private key for POST
+                      binding and don't prompt for one.
+                      
+    --use_legacy      Use legacy AuthN on the GSA (i.e, security-manager 
+                      disabled on 6.2 GSA).  Setting should only be used with
+                      --consumer_mech=static --gsa_host=
 
-  - quick setup of a "Trusted App" configuration,
-  - as well as setup for "transparent authentication with verified identity and
-    groups resolution", when the user already has an authentication cookie from an
-    SSO and connects to the GSA search page.
+    --exclude_keyinfo Exclude the <ds:KeyInfo/> node
 
-9. The script also accepts domain names if needed, wherever it accepts username:
-either in the format 'domain\\username' or in the format 'username@domain'. This
-enable quick test the behavior of hte GSA handling of the domain name.
+This script runs a web server on port 28080 that allows you to test the
+Authn SPI on the Google Search Appliance.
 
-Note: This script does not help with the following mechanism: Client
-Certificate, Kerberos, SAML, Connectors nor LDAP. Install your own.
+The authn.py script is basically a SAML IDP server which prompts the users
+with FORM username/password info and then complies with SAML2.0
+specifications for POST and artifact binding.
 
-To ease deployment, no need for additional external libraries, this script
-builds only on the Python2 standard library.
+It is not designed to handle full production load but rather just as a
+proof-of-concept.
+
+SETUP and RUN configuration.
+   After startup, you can view the configured username and passwords
+   by visiting http://idp.yourdomain.com:28080/  (if idp.yourdomain.com is
+   where authn.py is running)
+
+
+   self.user_db = {'user1':'password1', 'user2':'password1',
+                      'gsa1':'password1'}
+
+   On the GSA, set it up for crawling:
+            Crawl&Index-->CrawlURLs:
+                        StartURLs:   http://idp.yourdomain.com:28080/
+                        Follow:      http://idp.yourdomain.com:28080/
+
+            Serving-->Access Control
+                          IDP Entity ID:
+                            authn.py
+                          User Login URL:
+                            http://idp.yourdomain.com:28080/login
+                          Artifact Service URL (only if using artifact binding):
+                            http://idp.yourdomain.com:28080/artifact_service
+                          Public Key of IDP (only if using post binding):
+                            <public key>
+           (check Disable prompt for Basic authentication or NTLM authentication)
+
+For POST binding, this script uses libxml2, the Python libxml2 bindings,
+xmlsec, and PyXMLSec. The user must install these in advance in order to use
+POST binding.
+PyXMLSec is available at http://pyxmlsec.labs.libre-entreprise.org/
+
+# apt-get install python-cherrypy3 libxmlsec1-openssl libxml2 python-libxml2 python-libxml2-dbg  
+                  libxml2-dev  libxslt-dev libltdl-dev
+
+#then a manual install of xmlsec from source as sudo
+# http://www.aleksey.com/xmlsec/download/xmlsec1-1.2.18.tar.gz
+# gzip -d
+# untar
+# cd xmlsec...
+# sudo ./configure
+# sudo make
+# sudo make install
+
+#then install pyxmlsec from source as sudo
+# svn checkout svn://labs.libre-entreprise.org/svnroot/pyxmlsec
+# cd trunk
+# ./setup.py
+#  (select build, select openssl)
+# ./setup.py 
+# (select install)
+
+This script requires the cherrypy v3 to be installed (v2 gives an error since
+quickstart is not available).
+
+http://www.cherrypy.org/
+
+Also see:
+code.google.com/apis/searchappliance/documentation/64/authn_authz_spi.html
 """
 
-from base64 import b64decode
-import BaseHTTPServer
-from collections import defaultdict
-from Cookie import BaseCookie
-from optparse import OptionParser
-import os
-import platform
-import socket
-import ssl
+
+import base64
+import datetime
+import getopt
+import getpass
+import md5
+import random
 import sys
-from urlparse import parse_qsl
+import time
+import urllib
 from urlparse import urlparse
-from uuid import uuid1
+import xml.dom.minidom
+import zlib
+import cherrypy
+from xml.sax.saxutils import escape
+from socket import gethostname
+import cgi
+
+class SignatureError(Exception):
+  pass
+
+class AuthN(object):
+
+  def __init__(self, port, protocol, debug_flag, consumer_mech,
+               saml_issuer, gsa_host, binding, cert_file, key_file, key_pwd, use_legacy, exclude_keyinfo):
+    self.realm = "authn"
+    self.protocol = protocol
+    self.debug_flag = debug_flag
+    self.use_legacy = use_legacy
+    self.consumer_mech = consumer_mech
+    if gsa_host:
+      self.gsa_host = gsa_host
+    self.binding = binding
+    self.cert_file = cert_file
+    self.key_file = key_file
+    self.key_pwd = key_pwd
+    self.exclude_keyinfo = exclude_keyinfo
+
+    log ('--------------------------------')
+    log ('-----> Starting authn.py <------')
+    log ('--------------------------------')
+
+    # authentication database in the form of:
+    #  username: [password, [group1, group2,...]]
+    self.user_db = {'administrator@ESODOMAIN': ['pass1', []],
+                    'administrator': ['pass2', []],
+                    'user2@esodomain': ['pass1', ['esodomaingrp with space']],
+                    'esodomain\gsa':   ['pass1', ['ESODOMAIN\gShare1', 'ESODOMAIN\gShare2']]}
+
+    # stores the authenticated sessions
+    self.authnsessions = {}
+    self.recipients = {}
+    self.login_request_ids = {}
+    self.saml_issuer = saml_issuer
+
+  #Main landing page
+  def index(self):
+    indexHTML = ('<html><title>Authn Landing Page</title>'
+                 '<body><center>'
+                 '<h3>Landing page for SPI authn.py</h3>'
+                 '<p>'
+                 'The following usernames/passwords are available for testing<br>'
+                 '</p><p>')
+
+    # Generate a username/password table
+    indexHTML += ('<table  border="1" cellpadding="5" cellspacing="0">'
+                  '<tr><th>Username</th><th>Password</th></tr>')
+
+    for user in self.user_db:
+      indexHTML += ('<tr><td>' + user + '</td><td>' + self.user_db[user][0] +
+                    '</td><td>' + "".join(self.user_db[user][1]) +
+                    '</td></tr>')
+    indexHTML += ('</table>'
+                  '<p><a href="login">Login</a>'
+                  '</center></body></html>')
+    return indexHTML
+  index.exposed = True
 
 
-p = OptionParser()
+  # Generates SAML 2.0 IDs randomly.
+  def getrandom_samlID(self):
+    return random.choice('abcdefghijklmnopqrstuvwxyz') + hex(random.getrandbits(160))[2:-1]
 
-# Web server config
-p.add_option(
-    '--port', default=9000, type=int,
-    help='Listening port for the webserver. Default to 9000')
-p.add_option(
-    '--cert', default='',
-    help=('Turns on HTTPS. Filename of the cert. Should end in '
-          ' .crt. authn.py will use, for the private key, the '
-          ' same basename and the .key extension.'))
+  # 
+  def get_saml_namespace(self, xmldoc, tagname):
+    a = xmldoc.getElementsByTagName('samlp:%s' % tagname)
+    if a != []:
+      return ("samlp", "saml", a)
+    a = xmldoc.getElementsByTagName('saml2p:%s' % tagname)
+    if a != []:
+      return ("saml2p", "saml2", a)
 
-# Cookie configuration, all parameters of the authentication cookie can be set
-# from the command line to help with replicating most customers scenario. For
-# example, the cookie domain can be set with --domain .sub.company.com
-p.add_option(
-    '--cookie-name', default='sso',
-    help='Name of the cookie. Default to sso.')
-p.add_option(
-    '--expires', default='',
-    help='Cookie expiration date. Default to "" (unset).')
-p.add_option(
-    '--path', default='',
-    help='Cookie path. Default to "" (unset).')
-p.add_option(
-    '--domain', default='',
-    help='Cookie domain. Defaults to "" (unset).')
-p.add_option(
-    '--comment', default='',
-    help='The cookie "comment".')
-p.add_option(
-    '--max-age', default='',
-    help='The Max-Age value for the cookie.')
-p.add_option(
-    '--version', default='',
-    help='The "version" of a cookie.')
-p.add_option(
-    '--secure', default=False, action='store_true',
-    help='"secure" setting on the cookie.')
-p.add_option(
-    '--httponly', default=False, action='store_true',
-    help='"HttpOnly" setting of the cookie.')
+    log("exotic namespace")
+    #  TODO get the name space and return it
+    return ("", "", [])
 
-# Users configuration
-p.add_option(
-    '--users', default='joe:joe',
-    help=(r'Comma separated tuples of username:password strings (inside '
-          'the tuple, the separator is colon). Default to "joe:joe". '
-          'username:password:group1:group2 is also supported. The '
-          'username part can be of the 3 forms: joe, joe@domain, domain\\joe.'))
-p.add_option(
-    '--no-identity-resolution', default=False,
-    help=('The webserver is sending in its response the X-Username:value '
-          'and "X-Groups:value1, value2" headers by default. The Groups '
-          'header is only present if some headers were set in --users.'))
-p.add_option(
-    '--addomain', default=None,
-    help=('Default domain when the domain is unset for a user. There '
-          ' is no domain by default.'))
+    
+  # Collects the SAMLRequest, RelayState and prompts uses FORM to prompt the
+  # user.
+  def login(self,error = None, RelayState=None, SAMLRequest = None, SigAlg = None,
+            Signature = None):
+    log('-----------  LOGIN -----------')   
+    if error == None:
+      error = ""
 
-# Feeds
-p.add_option(
-    '--feed', default=False, action='store_true',
-    help='.')
-p.add_option(
-    '--groupsdb', default=False, action='store_true',
-    help='"secure" setting on the cookie.')
+    if not( RelayState is None):
+      cherrypy.session['RelayState'] = RelayState
+      log(' RelayState' + str(RelayState))
+    if not (SAMLRequest is None):
+      cherrypy.session['SAMLRequest'] = SAMLRequest
+      log(' SAMLRequest' + str(SAMLRequest))
 
-# The script uses four modules variables: CONF, ACCOUNTS, SESSIONS, PAGES
+    return """<html><body>
+         <center>
+         <font color=red>%s</font></br>
+               <form method="post" action="/authenticate">
+               Username: <input type="text" name="username" value="" /><br />
+               Password: <input type="password" name="password" /><br />
+               <input type="submit" value="Log in" />
+         </form>
+               </center></body></html>""" %error
+  login.exposed = True
 
-CONF, _ = p.parse_args()
+  def authenticate(self, username=None, password=None):
+    log('-----------  Authenticate -----------') 
+    if (username == None or password == None or username == '' or password == ''):
+      cherrypy.response.status = 302
+      cherrypy.response.headers['location'] = '/login?error=specify username+password'
+      return  
 
-# Configuration that is not really useful to provide to users
-CONF.host = platform.node()
-CONF.identity_resolution = not CONF.no_identity_resolution
-
-# List of the currently authenticated users. A request for a secure page with an
-# authentication cookie is granted iff the cookie value is in the SESSIONS.
-SESSIONS = {}
-
-# PAGES is a mapping of (URL paths, HTML string)
-PAGES = {
-    '/public': '<html><body>An interesting public page<body><html>',
-
-    '/cookie/sample': """<html><body>
-A vewy secure document protected by cookies<body><html>""",
-
-    '/basic/sample': 'Another "secure" article, "protected" by HTTP basic.',
-
-    '/basiccookie/sample': 'Top secret article, HTTP basic + cookie.',
-
-    '/cookie/creds_form': """<html><body>
-  <form action="/authenticate_from_form" method="post">
-    Login:    <input type="text"     name="login"    value="%s"/> <br/>
-    Password: <input type="password" name="password" value="%s"/> <br/>
-              <input type="hidden"   name="from"     value="%s"/> <br/>
-              <input type="submit"   value="send credentials"/>
-  </form>
-</body></html>""",
-
-    '/index': """
-<html><body>
-Four content pages on this web server:
-<ul>
-<li> <a href="/public">/public</a>: public page, no need for authn</li>
-<li> <a href="/cookie/sample">/cookie/sample</a>: page only avail to
-request with a cookie named <i>%s</i>
-<li> <a href="/basic/sample">/basic/sample</a>: page "protected" by HTTP basic</li>
-<li> <a href="/basiccookie/sample">/basiccookie/sample</a>:
-page requring a session cookie obtained after an HTTP basic authn</li>
-</li>
-</ul>
-
-One convenience page:
-<ul>
-<li><a href="/kill_cookie">/kill_cookie</a>: suppresses the authentication
-cookie </li>
-</ul>
-</body></html>\r\n\r\n""" % CONF.cookie_name,
-
-    'Unknown cookie': """<html><body>
-The cookie sent is not in our session db anymore.<br>
-You can use your browser settings to suppress the cookie '%s'.<body><html>""",
-
-    'no cookie sent': """<html><body>
-The browser sent no cookie or a cookie not in the sessions..<body><html>"""}
-
-# "Database" of users. Authentication cookies are delivered if the user password
-# matches the password for this user in ACCOUTNS. ACCOUNTS is provisioned from
-# the entries from the --users flag.
-
-
-class Accounts(dict):
-
-  def __init__(self, users):
-    """Returns a dict of users built from a string like --users.
-
-    Args:
-      users: a string formatted like --users.
-    """
-    dict.__init__(self)
-    for u in users.split(','):
-      split = u.split(':')
-      if len(split)<2:
-        raise ValueError(
-            'User format is username:password or user@domain:password. Got: %s'
-            % u)
-      domain, username = Accounts.ParseUsername(split[0])
-      password = split[1]
-      groups = split[2:]
-      self[(domain, username)] = password, groups
-
-  @staticmethod
-  def ParseUsername(username):
-    if isinstance(username, basestring):
-      if '\\' in username:
-        domain, username = username.split('\\')
-      elif '@' in username:
-        username, domain = username.split('@')
+    try: 
+      if password == self.user_db[username.lower()][0]:
+        log('Authentication successful for ' + username.lower())
       else:
-        domain = CONF.addomain
-      return domain, username
-    elif len(username) == 2:
-      return username
-    else:
-      raise ValueError(
-          'A username can be user, user@domain, domain\\user or (domain, user)')
+        cherrypy.response.status = 302
+        cherrypy.response.headers['location'] = '/login?error=invalid username+password'
+        return
+    except KeyError:
+      cherrypy.response.status = 302
+      cherrypy.response.headers['location'] = '/login?error=invalid username+password'
+      return
+ 
+        
+    RelayState = cherrypy.session.get('RelayState')
+    SAMLRequest = cherrypy.session.get('SAMLRequest')
 
-  def __getitem__(self, username):
-    return dict.get(self, Accounts.ParseUsername(username), (None, None))
+    if SAMLRequest is None:
+      log('Received a request for authentication without SAMLRequest')
+      log('-----------  Authenticate END  -----------')
 
-  def __setitem__(self, username, value):
-    dict.__setitem__(
-        self, Accounts.ParseUsername(username), value)
+      return ('<font color=\"darkgreen\">Authentication successful for: '
+              '&quot;%s&quot;<br>However, SAMLRequest is None and we can\'t '
+              'proceed' %username)
 
-  def __contains__(self, username):
-    return dict.__contains__(self, Accounts.ParseUsername(username))
+    # Now b64decode and inflate
+    # XML parse out the result
+    # the consumer service should be in
+    # samlp:AuthnRequest/AssertionConsumerServiceURL attribute
+    # it SHOULD something like:
+    #        <?xml version="1.0" encoding="UTF-8"?>
+    #            <samlp:AuthnRequest
+    #            xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
+    #            ID="eeijbbeleijhjejokdbcpcgppombbnamnjmmobbh"
+    #            Version="2.0" IssueInstant="2008-07-09T15:22:44Z"
+    #            ProtocolBinding=
+    #                "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact"
+    #            ProviderName="google.com"
+    #            AssertionConsumerServiceURL=
+    #                    "https://gsa.yourdomain.com/SamlArtifactConsumer"
+    #            IsPassive="false">
+    #            <saml:Issuer xmlns:saml=
+    #                "urn:oasis:names:tc:SAML:2.0:assertion">
+    #                google.com
+    #            </saml:Issuer>
+    #            <samlp:NameIDPolicy AllowCreate="true"
+    #            Format="urn:oasis:names:tc:SAML:1.1:
+    #                        nameid-format:unspecified" />
+    #            </samlp:AuthnRequest>
+    decoded_saml = decode_base64_and_inflate(SAMLRequest)
+    xmldoc = xml.dom.minidom.parseString(decoded_saml)
 
+    # Try to get the issuer and request id of the saml request
+    saml_oissuer = None
+    req_id = None
+    (spprefix, sprefix, samlpnode) = self.get_saml_namespace(xmldoc, 'AuthnRequest')
+    log('using prefix: %s and %s' % (spprefix, sprefix))
 
-class CookieHelper(object):
-  """Helpers to create, suppress and extract cookies.
+    for node in samlpnode:
+      if node.nodeName == '%s:AuthnRequest' % spprefix:
+        if samlpnode[0].hasAttribute('ID'):
+          req_id = samlpnode[0].attributes['ID'].value
+        samliss = node.getElementsByTagName('%s:Issuer' % sprefix)
+        for n_issuer in samliss:
+          cnode = n_issuer.childNodes[0]
+          if cnode.nodeType == node.TEXT_NODE:
+            saml_oissuer = cnode.nodeValue
 
-  CookieHelper knows about 2 modules variables:
-  - CONF: which has the flags values,
-  - SESSIONS: a mapping of cookie values -> full cookie object
-  """
+    if not req_id:
+      log('Error: could not parse request SAML request ID')
+      return 'Error: could not parse request SAML request ID'
 
-  @staticmethod
-  def EndSession(headers):
-    """Sets the max-age to 0, return the string value, delete the session.
+    if self.binding == 'artifact':
+      # Generate a random artifiact ID and save it to recall later
+      rand_art = self.getrandom_samlID()
 
-    Remove the entry corresponding to cookie_value from the SESSIONS.
+      # Stash the artifact associated with the user it in a table so that
+      # when asked who an artifact belongs to, we know who the user is.
+      self.authnsessions[rand_art] = (username)
 
-    When the return value of this function is sent back via Set-Cookie
-    to a user browser, the cookie is suppressed (yes, max-age set to 0 is
-    one way for a server to request the browser to suppress the cookie).
+      if self.debug_flag:
+        log('Parsed SAMLRequest: %s' %xmldoc.toprettyxml())
 
-    Args:
-      headers: a BaseHTTPHandler set of headers.
+      self.login_request_ids[rand_art] = req_id
 
-    Returns:
-      The full cookie is returned, as a string.
-    """
-    cookies = BaseCookie(headers.getheader('Cookie'))
-    if cookies:
-      if CONF.cookie_name in cookies:
-        cookie_value = cookies[CONF.cookie_name].value
-        if cookie_value in SESSIONS:
-          SESSIONS[cookie_value][0][CONF.cookie_name]['max-age'] = '0'
-          cookie = SESSIONS[cookie_value][0][CONF.cookie_name].OutputString()
-          del SESSIONS[cookie_value]
-          print "Suppressing cookie 'Set-Cookie: %s' \n" % cookie
-          return cookie
-
-  @staticmethod
-  def Make(username):
-    """Return a session cookie. The cookie is kept in the SESSIONS.
-
-    Args:
-      None. The function generates a small random value for the cookie value.
-
-    Returns:
-      the full cookie as a string, ready to be pasted after a "Set-Cookie: ".
-    """
-    domain, username = Accounts.ParseUsername(username)
-    value = str(uuid1())[:8]
-    jar = BaseCookie()
-    SESSIONS[value] = jar, domain, username
-    jar[CONF.cookie_name] = value
-    for a in 'expires path comment domain max-age version '.split():
-      if getattr(CONF, a, False):
-        jar[CONF.cookie_name][a] = getattr(CONF, a.replace('-', '_'))
-    for a in 'secure', 'httponly':
-      if getattr(CONF, a, False):
-        jar[CONF.cookie_name][a] = True
-
-    return jar[CONF.cookie_name].OutputString()
-
-  @staticmethod
-  def Authenticated(headers):
-    """Return true if the authn cookie is in the SESSION.
-
-    Args:
-      headers: the headers object from a BaseHTTPRequestHandler
-        (the HTTP headers for the request)
-
-    Returns:
-      True is the value of the authn cookie is in SESSIONS.
-    """
-
-    cookies = BaseCookie(headers.getheader('Cookie'))
-    if cookies:
-      if CONF.cookie_name in cookies:
-        cookie, domain, username = SESSIONS.get(cookies[CONF.cookie_name].value,
-                                                (None, None, None))
-        if cookie:
-          print(
-              'Received an authn cookie tracking a known session:"Cookie: %s"'
-              % cookies[CONF.cookie_name].OutputString())
-
-          _, groups = ACCOUNTS[domain, username]
-
-          return (username if domain is None
-                  else ('%s\\%s' % (username, domain)),
-                  groups)
-        else:
-          print(
-              'Received an unknown authn cookie '
-              '(server was most likely restarted)')
-    return (None, None)
-
-
-class VerySecureSite(BaseHTTPServer.BaseHTTPRequestHandler):
-
-  domain, username, groups = None, None, None
-
-  def log_request(self, *_):
-    """Overriding automatic loggin, shutting it down."""
-    pass
-
-  def log_message(self, *_):
-    """Overriding automatice logging, shutting it down."""
-    pass
-
-  def Respond(self, code, headers, body=None):
-    """Helper for sending an HTTP status, header and body.
-
-    Args:
-      code: an integer, typically 200 or 401.
-      headers: a dictionary of string -> strings.
-      body: a string, HTTP body text or html page.
-
-    Returns:
-      None. All side effect using the methods from self.
-    """
-    self.send_response(code)
-    if self.username and CONF.identity_resolution:
-      self.send_header('X-Username', self.username)
-
-      if self.groups:
-        self.send_header('X-Groups', ', '.join(self.groups))
-
-    [self.send_header(k, v) for k, v in headers.items()]
-
-    self.end_headers()
-
-    if body:
-      self.wfile.write(body)
-    self.connection.shutdown(socket.SHUT_RDWR)
-
-  def SendPage(self, pagename, *args):
-    """Helper for returning an HTTP page.
-
-    Args:
-      pagename: a text or html string.
-      args: optional list of args required by the page for string formatting.
-
-    Returns:
-      None. All side effects, using the self methods.
-    """
-    print 'Sending page %s\n' % pagename
-    self.Respond(200, {'Content-Type': 'text/html'}, PAGES[pagename] % args)
-
-  def do_GET(self):    # pylint: disable=invalid-name
-    """Processes HTTP GET requests, usually reponds with a page or 302.
-
-    Returns:
-      None. All side effects.
-    """
-    if self.path != '/favicon.ico':
-      print 'Received GET request for', self.path
-    parsed = urlparse(self.path)
-
-    ### 0/4 the root page
-    if parsed.path in ['', '/', '/index']:
-      self.SendPage('/index')
-
-    elif parsed.path == '/public':
-      ### 1/4 public page
-      self.SendPage('/public')
-
-    elif parsed.path == '/basic/sample':
-      ### 2/4 page protected by HTTP Basic
-      # HTTP basic authn do not use no cookies, the flow goes like this:
-
-      # 1. the server checks if the request has an 'Authorization' header
-
-      # 2. if the request has none, the server sends 401 with a header
-      # WWW-Authenticate. The value of the header is 'Basic realm="<name of the
-      # realm>"'. The realm is a hint displayed to the user for the user to send
-      # the right username and password for this website.
-
-      # 3. the browser interprets the response and shows the user dialog box,
-      # for the user to type in the credentials
-
-      # 4. the browser sends the same request as in 1. with an additional header
-      # 'Authorization'. The value is simply '<username>:<password>', and the
-      # whole string base64 encoded.
-
-      # 5. As in 1., the server now sess the header, checks if the username,
-      # password pair matches the password known for this user, and if they
-      # match sends the page.
-
-      # The browser transparently remembers the passwords, the dialog only
-      # appears once. The Authorization header is the same used for Kerberos or
-      # NTLM, the value does not have 'Basic' though.
-
-      auth_header = self.headers.getheader('Authorization')
-      if not auth_header:
-        msg = 'Page protected by HTTP basic and no Authorization header'
-        print msg
-        self.Respond(
-            401, {'WWW-Authenticate': 'Basic realm="GSA Test Authn"'}, msg)
+    # We can either use:
+    # 1) Decode/decompress the unsigned SAMLRequest to figure out the AssertionConsumerServiceURL
+    # 2) Statically redirect: provided as a command line argument
+    if self.consumer_mech == 'static':
+      if (self.use_legacy):
+        log('Static redirect for Legacy AuthN ')
+        static_redirect = 'https://' + self.gsa_host + '/SamlArtifactConsumer' 
       else:
-        if not auth_header.lower().startswith('basic'):
-          msg = '401! Weird authentication header "%s"' % auth_header
-          print msg
-          self.Respond(401, {'Content-Type': 'text/html'}, msg)
+        log('Static redirect for SecurityManager AuthN ')
+        static_redirect = 'https://' + self.gsa_host + \
+         '/security-manager/samlassertionconsumer'       
+
+      if self.binding == 'artifact':
+        self.recipients[rand_art] = static_redirect
+        if self.debug_flag:
+          log('Attempting to use STATIC  Header with Artifact [%s]'%(rand_art))
+        # Redirect back to the GSA and add on the artifact,relaystate
+        if (RelayState is None):
+          location = ('%s?SAMLart=%s'
+                      % (static_redirect, rand_art))
         else:
-          username, received_pass = b64decode(auth_header.split()[1]).split(':')
-          stored_password, groups = ACCOUNTS[username]
-          if stored_password == received_pass:
-            self.username, self.groups = username, groups
-            print 'The authz header has matching password for the username.'
-            self.SendPage('/basic/sample')
+          location = ('%s?SAMLart=%s&RelayState=%s'
+                      % (static_redirect, rand_art, urllib.quote(RelayState)))
+      elif self.binding == 'post':
+        location = static_redirect
+      if self.debug_flag:
+        log( 'Redirecting to: %s' %(location))
+      log('-----------  LOGIN END  -----------')
+
+    elif self.consumer_mech == 'saml':
+      # Otherwise
+      if self.debug_flag:
+        log('Attempting to parse SAML AssertionConsumerServiceURL')
+
+      acs_url = None
+      for node in samlpnode:
+        if node.nodeName == '%s:AuthnRequest' % spprefix:
+          if samlpnode[0].hasAttribute('AssertionConsumerServiceURL'):
+            acs_url = samlpnode[0].attributes \
+                          ['AssertionConsumerServiceURL'].value
           else:
-            self.Respond(401, {'Content-Type': 'text/html'},
-                         'Wrong credentials: %s' % [username, received_pass])
+            log('NO AssertionConsumerServiceURL sent in saml request')
+            return ('<html><title>Error</title><body>'
+                    'No AssertionConsumerServiceURL provided in'
+                    ' SAMLRequest</body></html>')
+          if self.debug_flag:
+            log('login Parsed AssertionConsumerServiceURL: %s' %(acs_url))
+          samliss = node.getElementsByTagName('%s:Issuer' % sprefix)
+          for n_issuer in samliss:
+            cnode = n_issuer.childNodes[0]
+            if cnode.nodeType == node.TEXT_NODE:
+              saml_oissuer = cnode.nodeValue
 
-    elif parsed.path == '/cookie/sample':
-      ### 3/4 page protected by cookie, credentials obtained via an html form
-
-      # Authentication by cookies is more flexible and sophisticated as the
-      # cookie mechanism was not originally designed specifically for this. If
-      # you compare to HTTP basic above, the browser does not automatically
-      # interpret the cookie header to display a credentials form to the
-      # user. Here is how this script implements it:
-
-      # 1. server receive a request for /cookie/sample, there is no authn cookie
-
-      # 2. server sends 302 toward to the login form, sets the location header:
-      #    /cookie/creds_form?from=/cookie/sample
-
-      # 3. browser sees the 302, and Location header: new request to server
-
-      # 4. server receives request, sends the html form whose form has:
-      #   <form action="/authenticate_from_form" method="post">
-      #   Login:    <input type="text"     name="login"    />
-      #   Password: <input type="password" name="password" />
-      #             <input type="hidden"   name="from"  value="/cookie/sample"/>
-
-      # 5. user fills the form and press submit: POST request to the action URL
-
-      # 6. the server receives the POST form values on /authenticate_from_form
-      # login=joe&password=joe&from=/cookie/sample
-
-      # 7. iff joe:joe is correct credentials, the server responds with:
-      #   - create a new session, and sets an authentication cookie to the user
-      #   - 302, sets the accompanying Location header to /cookie/sample
-
-      # 8. browser receives the redirections, request the original page and
-      #    sends along the authentication cookie.
-
-      # Unlike the HTTP Basic page, this cookie authentication requires more
-      # messages between browser and server: 4 pairs of requests/responses.
-      # 2 additional URLs endpoints are required:
-      # the login form and the form processing
-
-      username, groups = CookieHelper.Authenticated(self.headers)
-      if username:
-        self.username, self.groups = username, groups
-        self.SendPage('/cookie/sample')
-      else:
-        print 'No authn cookie, 302 Location:"/cookie/creds_form"\n'
-        self.Respond(
-            302, {'Location': '/cookie/creds_form?from=/cookie/sample'})
-
-    elif parsed.path == '/cookie/creds_form':
-      # The user browser is redirected here when it has no authn cookie.
-
-      # quick hack to make the site more convenient to use:
-      # the login form has valid credentials by default.
-      (domain, username), (password, _) = ACCOUNTS.items()[0]
-      form = PAGES['/cookie/creds_form'] % (
-          username, password, dict(parse_qsl(parsed.query)).get('from', None))
-      print 'Sending login form. action="/authenticate_from_form"\n'
-      self.Respond(200, {'Content-Type': 'text/html'}, form)
-
-    ### 4/4 page protected by cookie, credentials obtained via HTTP basic
-    elif parsed.path == '/basiccookie/sample':
-      username, groups = CookieHelper.Authenticated(self.headers)
-      if username:
-        self.username, self.groups = username, groups
-        self.SendPage('/basiccookie/sample')
-      else:
-        print ('Did not received the authn cookie, 302 to Basic Auth: %s\n'
-               % '/basiccookie/creds_form')
-        self.Respond(
-            302,
-            {'Location': ('/basiccookie/creds_form?from=%s'
-                          % '/basiccookie/sample')})
-
-    elif parsed.path == '/basiccookie/creds_form':
-      auth_header = self.headers.getheader('Authorization')
-      if not auth_header:
-        print 'Page protected by HTTP basic and no Authorization header'
-        self.Respond(401, {'WWW-Authenticate': 'Basic realm="GSA Test Authn"'})
-      else:
-        if not auth_header.lower().startswith('basic'):
-          msg = '401! Weird authentication header "%s"' % auth_header
-          print 'Received a weird authentication header "%s"' % auth_header
-          self.Respond(401, {'Content-Type': 'text/html'}, msg)
-        else:
-          username, received_password = b64decode(auth_header.split()[1]).split(':')
-          stored_password = ACCOUNTS[username][0]
-          if stored_password == received_password:
-            cookie = CookieHelper.Make(username)
-            location = dict(parse_qsl(parsed.query)).get('from', None)
-            print ('Correct HTTP basic creds encoded: setting autn cookie: "%s"'
-                   % cookie)
-            self.Respond(302, {'Set-Cookie': cookie,
-                               'Location': location})
+      # We got a consumerservice URL, now redirect the browser back
+      #to the GSA using that URL
+      if acs_url:
+        if self.binding == 'artifact':
+          self.recipients[rand_art] = acs_url
+          if (RelayState is None):
+            location = ("%s?SAMLart=%s") % (acs_url,rand_art)
           else:
-            self.Respond(401, {'Content-Type': 'text/html'},
-                         'Wrong credentials: %s' % [
-                             username, received_password])
+            location = ("%s?SAMLart=%s&RelayState=%s")%(acs_url,
+                                                        rand_art,
+                                                        urllib.quote(RelayState))
+        elif self.binding == 'post':
+          location = acs_url
+        if self.debug_flag:
+          log('Redirecting to: %s' %(location))
+          log('-----------  LOGIN END  -----------')
 
-    elif parsed.path == '/kill_cookie':
-      cookie_str = CookieHelper.EndSession(self.headers)
-      if cookie_str:
-        self.Respond(200,
-                     {'Content-Type': 'text/html', 'Set-Cookie': cookie_str},
-                     body='Cookie "%s" was suppressed' % CONF.cookie_name)
+    if self.binding == 'artifact':
+      cherrypy.response.status = 302
+      cherrypy.response.headers['location'] = location
+      log('Artifact Redirecting to: %s' %(location))
+      return ('<html><title>Error</title><body><h2>Unable to redirect'
+              '</h2></body></html>')
+    elif self.binding == 'post':
+      now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+      one_min_from_now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+60))
+      samlresp = self._generate_response(now, one_min_from_now, username,
+                                         req_id, location,
+                                         saml_oissuer, True)
+
+      log(xml.dom.minidom.parseString(samlresp).toprettyxml())
+
+      if (self.debug_flag):
+        onload_action = '<body>'
       else:
-        self.SendPage('no cookie sent')
+        onload_action = '<body onload="document.forms[0].submit()">'
+    
+      resp = ('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"'
+              'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">'
+              '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">'
+        '<head>'
+          '<script>'
+        '</script>'
+        '</head>'
+              '%s'
+        '<p>Login Successful</p>'
+              '<p>'
+              '<strong>Note:</strong> Users do not see the encoded SAML response.  This page is'
+              ' normally posted immediately <em>body onload=document.forms[0].submit()</em>'
+              '</p>'
+              '<form action="%s" method="post">'
+              '<div>'
+              '<li>RelayState: <input type="text" name="RelayState" value="%s"/></li>'
+              '<li>SAMLResponse: <input type="text" name="SAMLResponse" value="%s"/></li>'
+              '</div>'
+              '<div>'
+        '<p><em>click continue within  30 seconds of ' +  now + '</em></p>'
+              '<input type="submit" value="Continue"/>'
+              '</div>'
+              '</form>'
+        '<br/>'
+              '<p>Decoded SAMLResponse</p>'
+        '<textarea rows="75" cols="120" style="font-size:10px">%s</div>'
+              '</body></html>') % (onload_action,location, RelayState, base64.encodestring(samlresp),cgi.escape(xml.dom.minidom.parseString(samlresp).toprettyxml()))
+      log(resp)
 
-    else:
-      if self.path != '/favicon.ico':
-        print 'That page was not found. BOOM: 404\n'
-        self.Respond(404, {'Content-Type': 'text/plain'},
-                     '%s\n%s\n' % self.responses[404])
+      return resp
+  authenticate.exposed = True
 
-  def do_POST(self):    # pylint: disable=invalid-name
-    """Processes the login forms delivers a cookie if creds a in ACCOUNTS."""
+  # The SAML artifiact service.
+  # The GSA calls this and provides it the SAMLArt= ID that the auth.py sent
+  # back to the GSA during the
+  # redirect from  /login
+  # Once it has the SAMLArt=, it will lookup in a table for the authenticated
+  # user this artifact corresponds with
+  def artifact_service(self):
+    # Get the timestamp of now in the SAML format
+    now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    authn_request = cherrypy.request.body.read()
 
-    if urlparse(self.path).path == '/authenticate_from_form':
-      # The login form points its action to this URL for processing the
-      # credentials and possibly delivers the cookie.
-      body = self.rfile.read(
-          int(self.headers.getheader('content-length')))
+      # the SAML Request looks something like this:
+      #        request = ("<soapenv:Envelope xmlns:soapenv=
+      #            "http://schemas.xmlsoap.org/soap/envelope/\"
+      #            "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"
+      #            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
+      #            "<soapenv:Body>"
+      #              "<samlp:ArtifactResolve"
+      #              "ID=\"fdlgheibhbadpjcchojcgbaenjmgfdoinbmdgola\""
+      #              "IssueInstant=\"2008-07-09T15:22:54Z\""
+      #              "Version=\"2.0\""
+      #              "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\""
+      #              "xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\">"
+      #              "<saml:Issuer xmlns:saml=\
+      #                    "urn:oasis:names:tc:SAML:2.0:assertion\">
+      #                    google.com</saml:Issuer>"
+      #              "<samlp:Artifact>
+      #                a17809fb8401a4480959bc20fd17d4708
+      #               </samlp:Artifact>"
+      #               "</samlp:ArtifactResolve>"
+      #               "</soapenv:Body>"
+      #               "</soapenv:Envelope>")
 
-      form = dict(parse_qsl(body))
-      print ('Received GET request for /authenticate_from_form with '
-             'login=%s and password=%s') % (form['login'], form['password'])
+      # Now parse out the SAML ID number, artifact
 
-      username, received_password = form['login'], form['password']
-      stored_password, groups = ACCOUNTS[username]
-      if stored_password == form['password']:
-        self.username, self.groups = username, groups
-        cookie = CookieHelper.Make(username)
-        print ('Authentication succeeded, setting authentication cookie:'
-               '\nSet-Cookie: %s\nand redirecting user back to %s\n'
-               % (cookie, form['from']))
-        self.Respond(302, {'Set-Cookie': cookie,
-                           'Location': form['from']})
+    xmldoc = xml.dom.minidom.parseString(authn_request)
+    (spprefix, sprefix, samlp) = self.get_saml_namespace(xmldoc, 'ArtifactResolve')
+
+    log('-----------  ARTIFACT BEGIN  -----------')
+    if self.debug_flag:
+      log('artifact_service request: %s' %(xmldoc.toprettyxml()))
+
+    saml_id = None
+    saml_artifact = None
+    saml_oissuer = None
+
+    for node in samlp:
+      if (node.nodeName == '%s:ArtifactResolve' % spprefix):
+        saml_id = samlp[0].attributes["ID"].value
+        samlartifact = node.getElementsByTagName('%s:Artifact' % spprefix)
+        for n_issuer in samlartifact:
+          cnode = n_issuer.childNodes[0]
+          if cnode.nodeType == node.TEXT_NODE:
+            saml_artifact = cnode.nodeValue
+        samliss = node.getElementsByTagName('%s:Issuer' % sprefix)
+        for n_issuer in samliss:
+          cnode = n_issuer.childNodes[0]
+          if cnode.nodeType == node.TEXT_NODE:
+            saml_oissuer = cnode.nodeValue
+
+      # See if the artifiact corresponds with a user that was authenticated
+    username = self.authnsessions[saml_artifact]
+
+    # If there is no username assoicated with the artifact, we should
+    # show a SAML error response...this is a TODO, for now just show a message
+    if (username is None):
+      log('ERROR: No user associated with: %s' % saml_artifact)
+      return 'ERROR: No user associated with: %s' % saml_artifact
+
+    current_recipient = self.recipients[saml_artifact]
+    login_req_id = self.login_request_ids[saml_artifact]
+    # Now clear out the table
+    self.authnsessions[saml_artifact] = None
+    self.recipients[saml_artifact] = None
+    self.login_request_ids[saml_artifact] = None
+    rand_id = self.getrandom_samlID()
+    rand_id_assert = self.getrandom_samlID()
+
+    if self.debug_flag:
+      log('artifact_service Artifact %s' %(saml_artifact))
+      log('artifact_service ID %s' %(saml_id))
+      log('artifact_service recipient %s' %(current_recipient))
+      log('artifact_service login_req_id %s' %(login_req_id))
+
+    five_sec_from_now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+5) )
+    resp_rand_id = self.getrandom_samlID()
+
+    saml_response = self._generate_response(now, five_sec_from_now, username,
+                                            login_req_id, current_recipient,
+                                            saml_oissuer, False)
+    # Writeup the ArtifactResponse and set the username back
+    #along with the ID sent to it (i.e, the saml_id).
+    response = ('<SOAP-ENV:Envelope '
+                'xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">'
+                '<SOAP-ENV:Body>'
+                '<samlp:ArtifactResponse '
+                'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
+                'xmlns="urn:oasis:names:tc:SAML:2.0:assertion" '
+                'ID="%s" Version="2.0" InResponseTo="%s" IssueInstant="%s"> '
+                '<Issuer>%s</Issuer>'
+                '<samlp:Status>'
+                '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
+                '</samlp:Status>'
+                '%s'
+                '</samlp:ArtifactResponse>'
+                '</SOAP-ENV:Body>'
+                '</SOAP-ENV:Envelope>') % (rand_id, saml_id, now,
+                                           self.saml_issuer, saml_response)
+    if self.debug_flag:
+      xmldoc = xml.dom.minidom.parseString(response)
+      log('artifact_service response %s' %(xmldoc.toprettyxml()))
+    log('-----------  ARTIFACT END   -----------')
+    return response
+  artifact_service.exposed = True
+
+  def _generate_response(self, now, later, username, login_req_id, recipient, audience, signed):
+    resp_rand_id = self.getrandom_samlID()
+    rand_id_assert = self.getrandom_samlID()
+    sigtmpl = ''
+    if signed:
+      if (self.exclude_keyinfo):
+        key_info = ''
       else:
-        print ('Authentication failed: received %s, %s\n' % (
-            form['login'], form['password']))
-        self.Respond(401,
-                     {'Content-Type': 'text/html'},
-                     'Incorrect password, ressource forbidden')
-    else:
-      self.Respond(
-          401, {'Content-Type': 'text/plain'},
-          '%s\n%s\n' % self.responses[401])
+        key_info = ('<ds:KeyInfo>'
+                    '<ds:X509Data>'
+                    '<ds:X509Certificate></ds:X509Certificate>'
+                    '</ds:X509Data>'
+                    '</ds:KeyInfo>')
+
+      # if the response is to be signed, create a signature template
+      sigtmpl = ('<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">'
+                 '<ds:SignedInfo>'
+                 '<ds:CanonicalizationMethod '
+                 'Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />'
+                 '<ds:SignatureMethod '
+                 'Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1" />'
+                 '<ds:Reference URI="#%s">'
+                 '<ds:Transforms>'
+                 '<ds:Transform Algorithm='
+                 '"http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>'
+                 '</ds:Transforms>'
+                 '<ds:DigestMethod Algorithm='
+                 '"http://www.w3.org/2000/09/xmldsig#sha1" />'
+                 '<ds:DigestValue></ds:DigestValue>'
+                 '</ds:Reference>'
+                 '</ds:SignedInfo>'
+                 '<ds:SignatureValue/>'
+                 '%s'
+                 '</ds:Signature>') % (resp_rand_id,key_info)
+    grptmpl = ''
+    if self.user_db[username][1]:
+      log('looking for group info for user ' + username)
+      grptmpl += '<saml:AttributeStatement>' + '<saml:Attribute Name="member-of">'
+      for grp in self.user_db[username][1]:
+        grptmpl += '<saml:AttributeValue>%s</saml:AttributeValue>' % grp
+        log('found group: ' + grp)
+      grptmpl += '</saml:Attribute>' + '</saml:AttributeStatement>'
+    resp = ('<samlp:Response '
+            'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
+            'xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" '
+            'ID="%s" Version="2.0" IssueInstant="%s" Destination="%s">'
+            '<saml:Issuer>%s</saml:Issuer>'
+            '<samlp:Status>'
+            '<samlp:StatusCode '
+            'Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>'
+            '</samlp:Status>'
+            '<saml:Assertion '
+            'Version="2.0" ID="%s" IssueInstant="%s">'
+            '<saml:Issuer>%s</saml:Issuer>'
+            '<saml:Subject>'
+            '<saml:NameID>%s</saml:NameID>'
+            '<saml:SubjectConfirmation '
+            'Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">'
+            '<saml:SubjectConfirmationData '
+            'InResponseTo="%s" Recipient="%s" NotOnOrAfter="%s"/>'
+            '</saml:SubjectConfirmation>'
+            '</saml:Subject>'
+            '<saml:Conditions NotBefore="%s" NotOnOrAfter="%s">'
+            '<saml:AudienceRestriction>'
+            '<saml:Audience>%s</saml:Audience>'
+            '</saml:AudienceRestriction>'
+            '</saml:Conditions>'
+            '<saml:AuthnStatement AuthnInstant="%s" SessionIndex="%s">'
+            '<saml:AuthnContext>'
+            '<saml:AuthnContextClassRef>'
+            'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'
+            '</saml:AuthnContextClassRef>'
+            '</saml:AuthnContext>'
+            '</saml:AuthnStatement>'
+            '%s'
+            '</saml:Assertion>'
+            '%s'
+            '</samlp:Response>') % (resp_rand_id, now, recipient,
+                                    self.saml_issuer, rand_id_assert, now,
+                                    self.saml_issuer, username,
+                                    login_req_id, recipient, later,
+                                    now, later, audience,
+                                    now, rand_id_assert, grptmpl, sigtmpl)
+    if signed:
+      # hack DTD that lets xmlsec know the ID field name (pyxmlsec doesn't have
+      # a method that lets us specify this)
+      resp = '<!DOCTYPE samlp:Response [<!ATTLIST samlp:Response ID ID #IMPLIED>]>' + resp
+      return self._signXML(resp)
+    return resp
+
+  def _signXML(self, xml):
+    import libxml2
+    import xmlsec
+    dsigctx = None
+    doc = None
+    try:
+      # initialization
+      libxml2.initParser()
+      libxml2.substituteEntitiesDefault(1)
+      if xmlsec.init() < 0:
+        raise SignatureError('xmlsec init failed')
+      if xmlsec.checkVersion() != 1:
+        raise SignatureError('incompatible xmlsec library version %s' %
+                             str(xmlsec.checkVersion()))
+      if xmlsec.cryptoAppInit(None) < 0:
+        raise SignatureError('crypto initialization failed')
+      if xmlsec.cryptoInit() < 0:
+        raise SignatureError('xmlsec-crypto initialization failed')
+
+      # load the input
+      doc = libxml2.parseDoc(xml)
+      if not doc or not doc.getRootElement():
+        raise SignatureError('error parsing input xml')
+      node = xmlsec.findNode(doc.getRootElement(), xmlsec.NodeSignature,
+                             xmlsec.DSigNs)
+      if not node:
+        raise SignatureError("couldn't find root node")
+
+      # load the private key
+      key = xmlsec.cryptoAppKeyLoad(self.key_file, xmlsec.KeyDataFormatPem,
+                                    self.key_pwd, None, None)
+      if not key:
+        raise SignatureError('failed to load the private key %s' % self.key_file)
+
+      if xmlsec.cryptoAppKeyCertLoad(key, self.cert_file, xmlsec.KeyDataFormatPem) < 0:
+        print "Error: failed to load pem certificate \"%s\"" % self.cert_file
+        return self.cleanup(doc, dsigctx)
+
+      keymngr = xmlsec.KeysMngr()
+      xmlsec.cryptoAppDefaultKeysMngrInit(keymngr)
+      xmlsec.cryptoAppDefaultKeysMngrAdoptKey(keymngr, key)
+      dsigctx = xmlsec.DSigCtx(keymngr)
+
+      if key.setName(self.key_file) < 0:
+        raise SignatureError('failed to set key name')
+
+      # sign
+      if dsigctx.sign(node) < 0:
+        raise SignatureError('signing failed')
+      signed_xml = doc.serialize()
+
+    finally:
+      if dsigctx:
+        dsigctx.destroy()
+      if doc:
+        doc.freeDoc()
+      xmlsec.cryptoShutdown()
+      xmlsec.shutdown()
+      libxml2.cleanupParser()
+
+    return signed_xml
 
 
-def StartServer():
+def log(msg):
+  print ('[%s] %s') % (datetime.datetime.now(), msg)
+
+# Utility routintes to base64 encode/decode and inflate/deflate
+# pg 16-17:
+# http://docs.oasis-open.org/security/saml/v2.0/saml-bindings-2.0-os.pdf
+# from: http://stackoverflow.com/questions/1089662/
+#                                    python-inflate-and-deflate-implementations
+
+def decode_base64_and_inflate(b64string):
+  decoded_data = base64.b64decode(b64string)
+  return zlib.decompress(decoded_data, -15)
+
+def deflate_and_base64_encode(string_val):
+  zlibbed_str = zlib.compress(string_val)
+  compressed_string = zlibbed_str[2:-4]
+  return base64.b64encode(compressed_string)
+
+
+# -------
+# Main
+# -------------
+
+def main():
+  # Default listen port
+  cherrypy.server.socket_port = 28080
+  cherrypy.server.socket_host =  '0.0.0.0'
+  protocol = "http"
+  debug_flag = False
+  use_legacy = False
+  consumer_mech = "saml"
+  saml_issuer = "authn.py"
+  gsa_host = None
+  binding = "artifact"
+  key_file = None
+  key_pwd = None
+  cert_file = None
+  exclude_keyinfo = False
+
+  def usage():
+    print ('\nUsage: authn.py --debug --use_ssl '
+           '--port=<port> --consumer_mech=(saml|static) '
+           '--saml_issuer=<issuer> --gsa_host=<gsa_host> '
+           '--binding=(artifact|post) --key_file=<key_file> --cert_file=<cert_file> '
+           '--key_blank_pwd --use_legacy --exclude_keyinfo\n')
+
   try:
-    httpd = BaseHTTPServer.HTTPServer((CONF.host, CONF.port), VerySecureSite)
-  except socket.error, err:
-    if 'Address already in use' in str(err):
-      print 'Port %s is already in use, use --port.' % CONF.port
-    else:
-      print err
+    opts, args = getopt.getopt(sys.argv[1:], None,
+                               ["debug", "use_ssl", "port=",
+                                "consumer_mech=", "saml_issuer=", "gsa_host=",
+                                "binding=", "key_file=", "cert_file=", "key_blank_pwd",
+                                "use_legacy", "exclude_keyinfo"])
+  except getopt.GetoptError:
+    usage()
     sys.exit(1)
 
-  hostname = (CONF.host if CONF.port in [80, 443]
-              else '%s:%s' % (CONF.host, str(CONF.port)))
-  (domain, username), (password, _) = ACCOUNTS.items()[0]
+  cherrypy.config.update({'global':{'log.screen': False, "tools.sessions.on": "True"}})
+  for opt, arg in opts:
+    if opt == "--debug":
+      debug_flag = True
+      cherrypy.config.update({'global':{'log.screen': True}})
+    if opt == "--consumer_mech":
+      if arg == "static":
+        consumer_mech = "static"
+    if opt == "--gsa_host":
+      gsa_host = arg
+    if opt == "--saml_issuer":
+      saml_issuer = arg
+    if opt == "--use_ssl":
+      protocol = "https"
+      cherrypy.config.update({"global": {
+          "server.ssl_certificate": "ssl.crt",
+          "server.ssl_private_key": "ssl.key"}})
+    if opt == "--port":
+      port = int(arg)
+      cherrypy.config.update({"global": {"server.socket_port": port}})
+    if opt == "--binding":
+      binding = arg
+    if opt == "--key_file":
+      key_file = arg
+    if opt == "--cert_file":
+      cert_file = arg
+    if opt == "--key_blank_pwd":
+      key_pwd = ''
+    if opt == "--use_legacy":
+      use_legacy = True
+    if opt == "--exclude_keyinfo":
+      exclude_keyinfo = True
 
-  username = ('%s\\%s' % (domain, username)) if domain else username
+  if consumer_mech == "static":
+    if gsa_host is None:
+      log ("Please specify --gsa_host option for consumer_mech=static")
+      usage()
+      sys.exit(1)
+  else:
+    log ("ignoring gsa_host")
+    gsa_host = None
 
-  console_msg = """
-Webserver now running on http://%s/ username is %s, password is %s\n""" % (
-    hostname, username, password)
-
-  if CONF.cert:
-    keyfile = CONF.cert.replace('.crt', '.key')
-    if not (os.path.exists(CONF.cert) and os.path.exists(keyfile)):
-      print ('The certificate "%s" file or its private key "%s" is missing.'
-             'Create one with:\n'
-             'openssl req\n'
-             '     -newkey rsa:2048 -nodes -keyout server.key\n'
-             '     -subj "/C=UK/L=London/O=WWF/CN=%s"\n'
-             '     -days 3650  -x509\n'
-             '     -out server.crt\n' % (CONF.cert, keyfile, platform.node()))
-
+  if binding == 'post':
+    try:
+      import libxml2
+      import xmlsec
+    except ImportError:
+      log('POST binding is being used, but the Python bindings for libxml2 and'
+          'xmlsec are not both available.')
+      sys.exit(1)
+    if not key_file:
+      log('No private key specified to use for POST binding.')
+      usage()
+      sys.exit(1)
+    elif key_pwd is None:
+      key_pwd = getpass.getpass('Password for %s: ' % key_file)
+    if not cert_file:
+      log('Specify a public key (--cert_file=)')
+      usage()
       sys.exit(1)
 
-    console_msg = (console_msg.replace('http', 'https')
-                   if CONF.cert else console_msg)
-    httpd.socket = ssl.wrap_socket(
-        httpd.socket, certfile=CONF.cert, keyfile=keyfile, server_side=True)
-
-  print console_msg
-  try:
-    httpd.serve_forever()
-  except KeyboardInterrupt:
-    print ': exiting...'
-
-
-def PrintUrlFeedWithAcl():
-  """Write on stdout the url-and-metadata feed corresponding the input URLs.
-
-  Transforms the exported URLs to a metadata and URL feed.
-
-  Args:
-    exportedurl: A filename (should be the URLs exported from the
-      admin console).
-
-  Yields:
-    Snippet of an XML document.
-  """
-  # pylint: disable=protected-access
-  print ACCOUNTS
-  acls = FormatAccountsToAclXML(ACCOUNTS)
-  print PrintUrlFeedWithAcl.header
-  for path in ['/basic', '/cookie', '/cookiebasic']:
-    url = 'http://%s%s' % (platform.node(),path)
-    print '    ' + PrintUrlFeedWithAcl.record % (url, acls)
-
-  print PrintUrlFeedWithAcl.footer
-
-PrintUrlFeedWithAcl.header = """<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">
-<gsafeed>
-  <header>
-    <datasource>authn</datasource>
-    <feedtype>metadata-and-url</feedtype>
-  </header>
-  <group>"""
-
-PrintUrlFeedWithAcl.record = (
-    '<record url="%s" action="add" mimetype="text/html">\n%s\n    </record>')
-PrintUrlFeedWithAcl.acluser = (
-    )
-PrintUrlFeedWithAcl.footer = """  </group>
-</gsafeed>
-"""
-
-
-def FormatAccountsToAclXML(urls):
-  """Prints on stdout the ACLs feeds of the pages of this script."""
-
-  users = [(user[1] if user[0] is None else '%s\\%s' % user)
-           for user in ACCOUNTS.keys()]
-  groups = set()
-  [[groups.add(g) for g in a[1]] for a in ACCOUNTS.values()]
-
-  xml = '\n'.join(
-    '      <meta name="google:aclusers" content="%s"/>' % u for u in users)
-  if groups:
-    xml += '\n' + '\n'.join(
-      '      <meta name="google:aclgroups" content="%s"/>' % g for g in groups)
-
-  return xml
-       
-
-def PrintsGroupsToXML():
-  """Prints on stdout the groups feed of the registered users."""
-  groups = defaultdict(list)
-  for (domain, username), (password, ugroups) in ACCOUNTS.items():
-    for group in ugroups:
-      groups[group].append(username)
-  # users = ['%s\\%s' % username for username in ACCOUNTS]
-  print PrintsGroupsToXML.header
-  for g, users in groups.items():
-    xml_users = '\n'.join(PrintsGroupsToXML.user % u for u in users)
-    print PrintsGroupsToXML.group % (g, xml_users)
-  print PrintsGroupsToXML.footer
-
-PrintsGroupsToXML.header = """<?xml version="1.0" encoding="ISO-8859-1"?>
-<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">
-<xmlgroups>"""
-
-PrintsGroupsToXML.group = """  <membership>
-    <principal namespace="Default" case-sensitivity-type="EVERYTHING_CASE_INSENSITIVE" scope="GROUP">\n\
-    %s\n    </principal>
-    <members>\n%s\n    </members>
-  </membership>"""
-
-PrintsGroupsToXML.user = '       <principal namespace="Default" \
-case-sensitivity-type="EVERYTHING_CASE_INSENSITIVE" scope="USER">\n\
-        %s\n       </principal>'
-
-PrintsGroupsToXML.footer = """</xmlgroups>"""
-
-# Known error message, and likely configuration issue
-# crawl diag says:
-# Error: Cookie Manager failed to complete all actions for the
-# configured Cookie Rule.
-# -> likely that the creds in the form authn crawl rule are incorrect
-
-# Error: Cookie Manager was unable to find any valid Cookies for the
-# configured Cookie Rule ->  there should be no dot prefixing the cookie domain
-
+  cherrypy.quickstart(AuthN(cherrypy.server.socket_port, protocol, debug_flag,
+                            consumer_mech, saml_issuer, gsa_host, binding,cert_file,
+                            key_file, key_pwd, use_legacy, exclude_keyinfo))
 
 if __name__ == '__main__':
-
-  ACCOUNTS = Accounts(CONF.users)
-  if CONF.feed:
-    PrintUrlFeedWithAcl()
-  elif CONF.groupsdb:
-    PrintsGroupsToXML()
-  else:
-    StartServer()
+  main()
