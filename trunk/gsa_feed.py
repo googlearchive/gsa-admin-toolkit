@@ -358,7 +358,7 @@ def ExtractFollowUrls(filename):
       if elem.tag == 'record':
         if 'url' in elem.attrib:
           url = urlparse.urlparse(elem.attrib['url'])
-          follow_urls.add('/'.join([url.scheme, url.netloc]) + '/')
+          follow_urls.add('%s://%s/' % (url.scheme, url.netloc))
   return follow_urls
 
 
