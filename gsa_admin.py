@@ -661,7 +661,8 @@ class gsaWebInterface:
     self._login()
     log.info("Retrieving GSA^n network diagnostics status from: %s", self.hostName)
     request = urllib2.Request(self.baseURL + "?" +
-                              urllib.urlencode({'actionType': 'gsanDiagnostics'}))
+                              urllib.urlencode({'a': 1,
+                                                'actionType': 'gsanDiagnostics'}))
 
     result = self._openurl(request)
     content = result.read()
