@@ -16,13 +16,13 @@ given at the top of the source code file for each program.
 
 This code is not supported by Google.
 
-Binary Downloads
+Downloads
 ----------------
-Precompiled downloads are available for some utilities. If you've been directed to use one of these utilities, you should try these first.
+Ready-to-use downloads are available for the following utilities from [Google Drive](https://drive.google.com/folderview?id=0B7nWgkrzL8DFTWdFZWpCTVo2Y3c&usp=sharing#list).
 
-  1. [GSA-GA.zip](https://gsa-admin-toolkit.googlecode.com/files/GSA-GA.zip) -- Google Analytics integration resources.
-  1. [sht.zip](https://gsa-admin-toolkit.googlecode.com/files/sht.zip) -- Self Help Tool for integrating GSA with Microsoft SharePoint, Fileshares and Kerberos
-  1. [gsa_sign.exe](https://github.com/google/gsa-admin-toolkit/blob/master/gsa_sign.exe) -- .NET executable to re-sign exported configuration. Allows you to export config, edit, and re-import.
+  * `GSA-GA.zip` -- Google Analytics integration resources.
+  * `sht.zip` -- Self Help Tool for integrating GSA with Microsoft SharePoint, Fileshares and Kerberos
+  * `gsa_sign.exe` -- .NET executable to re-sign exported configuration. Allows you to export config, edit, and re-import.
 
 Source
 ------
