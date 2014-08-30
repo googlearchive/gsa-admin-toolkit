@@ -1,8 +1,6 @@
 #!/usr/bin/python2.4
 # coding: utf-8
 #
-# http://gsa-admin-toolkit.googlecode.com/svn/trunk/smbcrawler.py
-#
 # Copyright 2008 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -81,7 +79,7 @@ Examples
 
 Known issues
   None yet, feel free to report issues or feature requests to
-  http://code.google.com/p/gsa-admin-toolkit/issues/
+  https://github.com/google/gsa-admin-toolkit/issues
 
 This script is not supported by Google.
 """

@@ -27,7 +27,7 @@ changed since the last invocation.
 Prerequisite:
   Sharepoint Services 3.0
   Python 2.6
-  GSA Python ConnectorManager (http://code.google.com/p/gsa-admin-toolkit)
+  GSA Python ConnectorManager (https://github.com/google/gsa-admin-toolkit/connectormanager)
   CherryPy  (http://www.cherrypy.org/)
   suds      (https://fedorahosted.org/suds/)
             (python-setuptools)

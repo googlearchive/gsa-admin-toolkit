@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 #
-# http://gsa-admin-toolkit.googlecode.com/svn/trunk/connector_exceptions.py
-#
 # Copyright 2008 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

@@ -84,9 +84,7 @@ usage:
     construct. Thus the sendMultiContentFeed and sendContentFeed methods are
     supplied to simplify sending content feeds to the GSA.
     (Information about the feed XML format can be found at
-    http://code.google.com/apis/searchappliance/
-        documentation/62/feedsguide.html).
-
+      http://www.google.com/support/enterprise/static/gsa/docs/admin/72/gsa_doc_set/feedsguide/feedsguide.html).
     When a connector is added or modified from the GSA's admin console, the
     ConnectorManager will call stopConnector() then startConnector().  The
     specific connector implementation must make sure to properly stop/start

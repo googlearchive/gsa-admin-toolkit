@@ -79,7 +79,7 @@ quickstart is not available).
 http://www.cherrypy.org/
 
 Also see:
-code.google.com/apis/searchappliance/documentation/64/authn_authz_spi.html
+http://www.google.com/support/enterprise/static/gsa/docs/admin/72/gsa_doc_set/authn_authz_spi/authn_authz_spi.html
 """
 
 

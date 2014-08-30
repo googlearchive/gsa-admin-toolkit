@@ -586,8 +586,7 @@ class Feed(object):
       url, displayurl, mimetype, etc.: Attributes for the record tag, to be
         provided as needed (should be strings). The GSA requires the url and
         metadata arguments to be provided. See
-        http://code.google.com/apis/searchappliance/
-            documentation/64/feedsguide.html#defining_the_xml
+        http://www.google.com/support/enterprise/static/gsa/docs/admin/72/gsa_doc_set/feedsguide/feedsguide.html#1073054
         for a full list of record tag attributes.
       metadata: Optional. Metadata tags to add to the feed, as a dictionary
         that maps strings to strings.
