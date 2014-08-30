@@ -5,7 +5,7 @@ common tasks for Google Search Appliance (GSA) administrators.
 
 Prerequisites
 -------------
-The programs are written in either Java, Python on Shell. Any
+The programs are mostly written in Java, Python, or Bash. Any
 required libraries that are non-standard will be documented within the
 source code file for the program.
 
