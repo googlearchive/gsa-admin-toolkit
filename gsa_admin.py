@@ -169,14 +169,19 @@ class gsaConfig:
     self.setXMLContents(doc.toxml())
 
   def writeFile(self, filename):
-    if os.path.exists(filename):
-      log.error("Output file exists")
-      sys.exit(1)
     doc = xml.dom.minidom.parseString(self.configXMLString)
-    outputXMLFile = codecs.open(filename, 'w', "utf-8")
-    log.debug("Writing XML to %s" % filename)
-    # GSA newer than 6.? expects '<eef>' to be on the second line.
-    outputXMLFile.write(doc.toxml().replace("<eef>", "\n<eef>", 1))
+    if filename == "-":
+      log.debug("Writing XML to stdout")
+      # GSA newer than 6.? expects '<eef>' to be on the second line.
+      sys.stdout.write(doc.toxml().replace("<eef>", "\n<eef>", 1))
+    else:
+      if os.path.exists(filename):
+        log.error("Output file exists")
+        sys.exit(1)
+      outputXMLFile = codecs.open(filename, 'w', "utf-8")
+      log.debug("Writing XML to %s" % filename)
+      # GSA newer than 6.? expects '<eef>' to be on the second line.
+      outputXMLFile.write(doc.toxml().replace("<eef>", "\n<eef>", 1))
 
   def verifySignature(self, password):
     computedSignature = self.computeSignature(password)
@@ -832,7 +837,7 @@ if __name__ == "__main__":
                       help="Input XML file", metavar="FILE")
 
   parser.add_option("-o", "--output", dest="outputFile",
-          help="Output file name", metavar="FILE")
+          help="Output file name or '-', meaning stdout", metavar="FILE")
 
   parser.add_option("-g", "--sign-password", dest="signpassword",
           help="Sign password for signing/import/export")
