@@ -91,7 +91,7 @@ class NullHandler(logging.Handler):
     def emit(self, record):
         pass
 
-DEFAULTLOGLEVEL=logging.DEBUG
+DEFAULTLOGLEVEL=logging.WARNING
 log = logging.getLogger(__name__)
 log.addHandler(NullHandler())
 
