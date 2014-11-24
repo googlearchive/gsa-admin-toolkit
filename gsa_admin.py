@@ -446,7 +446,8 @@ class gsaWebInterface:
     self._login()
     for database in database_list:
       log.info("Syncing %s ..." % database)
-      param = urllib.urlencode({"actionType": "syncDatabase",
+      param = urllib.urlencode({"a": "1",
+                                "actionType": "syncDatabase",
                                 "entryName": database})
       request = urllib2.Request(self.baseURL + "?" + param)
       try:
