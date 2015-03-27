@@ -15,6 +15,11 @@
 # This code is not supported by Google
 #
 # uar.pl - Command line tool to manage GSA User Added Results (UAR)
+#
+#   Configuration Notes:
+#   - REQUEST urls may need to be customized, as well as the ULF flow
+#   - You will need to create the security_token frontend 
+#     (See security_token.xslt)
 
 use strict;
 use Getopt::Long;
@@ -24,7 +29,7 @@ use Pod::Usage;
 use URI::Encode qw(uri_encode);
 use XML::XPath;
 
-my $GSA_HOST = "172.25.17.218";
+my $GSA_HOST = "";  # If you want to hardcode the gsa hostname
 my $GSA_FRONTEND = "default_frontend";
 my $HTTP = "https://";
 my $TOKEN_REQUEST =  "/search?q=test&access=a&proxystylesheet=security_token";
@@ -61,35 +66,54 @@ if ($help) {
   usage("");
 }
 
+if ($GSA_HOST eq "") {
+  usage("gsa hostname or IP must be specified with --host");
+}
+
 if ($action eq "") {
   usage("action must be specified");
 }
 
-if ($action eq "add" && 
-    ($query eq "" || $uar_name eq "" || $uar_title eq "" or $uar_url eq "")) {
-  usage("query, name, tile and url must be specified");
+if ($uar_name ne "") {
+  if ($uar_name !~ /^[a-z][a-z_0-9-]{0,31}$/i) {
+    usage("invalid UAR name specified");
+  }
 }
 
-if ($action eq "edit" && 
-    ($uar_name eq "" || $uar_title eq "" || $uar_url eq "")) {
-  usage("name, title and url must be specified");
+if ($query ne "") {
+  if ($query =~ /([\&\?])/) {
+    usage("Invalid character in query: '$1'");
+  }
 }
 
-if ($action eq "delete" && (($query eq "" && $uar_rid eq "") 
-                            || $uar_name eq "")) {
-  usage("query|rid & name must be specified");
+if ($action eq "add") {
+  if ($query eq "" || $uar_name eq "" || $uar_title eq "" or $uar_url eq "") {
+    usage("query, name, tile and url must be specified");
+  }
+}
+
+if ($action eq "edit") {
+  if ($uar_name eq "" || $uar_title eq "" || $uar_url eq "") {
+    usage("name, title and url must be specified");
+  }
+}
+
+if ($action eq "delete") {
+  if (($query eq "" && $uar_rid eq "") || $uar_name eq "") {
+    usage("query|rid & name must be specified");
+  }
 }
 
 # Setup "browser" client
 my $browser = LWP::UserAgent->new(
   ssl_opts => { SSL_verify_mode => 'SSL_VERIFY_NONE'},
   requests_redirectable => [ 'GET', 'HEAD', 'POST' ]
-  );$
-browser->ssl_opts(verify_hostname => 0);
+  );
+$browser->ssl_opts(verify_hostname => 0);
 $browser->cookie_jar(HTTP::Cookies->new(file => "$ENV{HOME}/.cookies.txt"));
 if ($verbose) {
-  $browser->add_handler("request_send",  sub { shift->dump; return });
-  $browser->add_handler("response_done", sub { shift->dump; return });
+  $browser->add_handler("request_send",  \&dump_ua);
+  $browser->add_handler("response_done", \&dump_ua);
 }
 
 # Login to GSA, get a security token
@@ -109,7 +133,7 @@ if ($action eq "list") {
 } elsif ($action eq "edit") {
   edit_uar($query,$uar_name,$uar_rid,$uar_title,$uar_url);
 } else {
-  usage("action must be specified");
+  usage("action of list|add|delete|edit must be specified");
 }
 
 exit();
@@ -121,12 +145,12 @@ sub get_uar {
   my $response = $browser->get($HTTP . $GSA_HOST . $SEARCH_REQUEST . 
                                "&client=" . $GSA_FRONTEND . "&q=" . $query);
 
-  if ($response->code != 200) {
+  if (!$response->is_success || $response->code != 200) {
     die("Error getting response from GSA - check request parameters");
   }
 
   my $body = $response->content();
-  my $p = XML::Parser->new( NoLWP => 1);
+  my $p = XML::Parser->new(NoLWP => 1);
   my $xp = XML::XPath->new(parser => $p, xml => $body);
   my $ob = $xp->find('/GSP/ENTOBRESULTS/OBRES/MODULE_RESULT');
 
@@ -149,6 +173,7 @@ sub list_all_uar {
       print "$rid\n$title\n$url\n\n";
     }
   }
+  return;
 }
 
 # Delete all UAR's for a specific query
@@ -165,6 +190,7 @@ sub delete_all_uar {
       delete_single_uar($rid, $uar_name);
     }
   }
+  return;
 }
 
 # Delete a single UAR based on rid
@@ -181,6 +207,7 @@ sub delete_single_uar {
                      'token' => $security_token
                    });
   print $response->code. " - ". $response->content . "\n";
+  return;
 }
 
 # Add a new UAR
@@ -226,6 +253,7 @@ sub edit_uar {
                    });
 
   print $response->code . " - " . $response->content . "\n";
+  return;
 }
 
 # Submit the ULF
@@ -237,27 +265,29 @@ sub submit_ulf {
                      'pwDefault' => $PASSWORD
                    });
 
-  if ($response->code != 200) {
+  if (!$response->is_success || $response->code != 200) {
     die "Error submitting credentials: " . $response->message;
   }
 
   return($response);
 }
 
-# usage info - exits with die()
+# print HTTP request/response when --verbose
+sub dump_ua {
+  my $ua = shift;
+  $ua->dump;
+
+  return;
+}
+
+# usage info
 sub usage {
   my $message = shift;
 
-  if (defined $message && length $message) {
-    $message .= "\n"
-      unless $message =~ /\n$/;
-  }
-
   my $command = $0;
-  $command =~ s#^.*/##;
+  $command =~ s/^.*[\/\\]//; # Remove path
 
   print STDERR (
-    $message,
     "Usage: $command --action <add|edit|list|delete> --query <query>\n" .
     "         --name <uar_config_name>\n" .
     "         --title <uar_title> --url <uar_url> --rid <uar_id>\n" .
@@ -278,7 +308,12 @@ sub usage {
     "  Delete single UAR entry:\n" .
     "    $command --action delete --rid 123456789 --name myuar\n\n" .
     "  Delete all UAR for a query:\n" .
-    "    $command --action delete --query foo --name myuar\n\n" 
+    "    $command --action delete --query foo --name myuar\n\n"
     );
-   die("\n")
+  
+  if ($message ne "") {
+    print STDERR ("\nERROR: " . $message . "\n\n");
+  }
+
+  exit();
 }
