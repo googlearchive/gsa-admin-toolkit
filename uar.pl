@@ -314,6 +314,5 @@ sub usage {
   if ($message ne "") {
     print STDERR ("\nERROR: " . $message . "\n\n");
   }
-
   exit();
 }
