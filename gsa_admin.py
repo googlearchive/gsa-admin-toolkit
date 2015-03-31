@@ -209,8 +209,9 @@ class gsaWebInterface:
   loggedIn = None
   _url_opener = None
 
-  def __init__(self, hostName, username, password, port=8000):
-    self.baseURL = 'http://%s:%s/EnterpriseController' % (hostName, port)
+  def __init__(self, hostName, username, password, port=8000, ssl=False):
+    protocol = 'https' if ssl else 'http'
+    self.baseURL = '%s://%s:%s/EnterpriseController' % (protocol, hostName, port)
     self.hostName = hostName
     self.username = username
     self.password = password
@@ -904,7 +905,10 @@ if __name__ == "__main__":
           help="GSA hostname")
 
   gsaHostOptions.add_option("--port", dest="port",
-          help="Upload port. Defaults to 8000", default="8000")
+          help="GSA port. Defaults to 8000", default="8000")
+
+  gsaHostOptions.add_option("--ssl", dest="ssl",
+          help="Use SSL (HTTPS). Default is false (HTTP).", action="store_true")
 
   gsaHostOptions.add_option("-u", "--username", dest="gsaUsername",
             help="Username to login GSA")
@@ -1065,7 +1069,7 @@ if __name__ == "__main__":
     gsac = gsaConfig(options.inputFile)
     if not gsac.verifySignature(options.signpassword):
       log.warn("Pre-import validation failed. Signature does not match. Expect the GSA to fail on import")
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     gsaWI.importConfig(gsac, options.signpassword)
     log.info("Import completed")
 
@@ -1074,7 +1078,7 @@ if __name__ == "__main__":
       log.error("Output file not given")
       sys.exit(3)
     log.info("Exporting config from %s to %s" % (options.gsaHostName, options.outputFile) )
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     gsac = gsaWI.exportConfig(options.signpassword)
     gsac.writeFile(options.outputFile)
     log.info("Export completed")
@@ -1101,10 +1105,10 @@ if __name__ == "__main__":
         sys.exit(3)
 
     if options.maxhostload and options.timeout:
-      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
       gsaWI.setAccessControl(options.maxhostload, options.timeout)
     elif options.maxhostload:
-      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
       gsaWI.setAccessControl(options.maxhostload)
     else:
       log.error("No value for Authorization Cache Timeout or Max Host Load")
@@ -1121,7 +1125,7 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       log.info("Retrieving URLs in crawl diagnostics to %s" % options.outputFile)
-      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
       gsaWI.getAllUrls(f)
       f.close()
       log.info("All URLs exported.")
@@ -1137,7 +1141,7 @@ if __name__ == "__main__":
       sys.exit(3)
 
     log.info("Exporting all URLs to %s" % options.outputFile)
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     gsaWI.exportAllUrls(f)
     f.close()
 
@@ -1147,7 +1151,7 @@ if __name__ == "__main__":
       sys.exit(3)
     databases = options.sources.split(",")
     log.info("Sync'ing databases %s" % options.sources)
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     gsac = gsaWI.syncDatabases(databases)
     log.info("Sync completed")
 
@@ -1165,7 +1169,7 @@ if __name__ == "__main__":
       sys.exit(3)
 
     log.info("Exporting keymatches for %s to %s" % (options.frontend, options.outputFile) )
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     gsaWI.exportKeymatches(options.frontend, f)
     f.close()
 
@@ -1183,18 +1187,18 @@ if __name__ == "__main__":
       sys.exit(3)
 
     log.info("Exporting synonyms for %s to %s" % (options.frontend, options.outputFile) )
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     gsaWI.exportSynonyms(options.frontend, f)
     f.close()
   elif action == "status":
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     gsaWI.getStatus()
   elif action == "getcollection":
     if not options.collection:
       collection = "default_collection"
     else:
       collection = options.collection
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     gsaWI.getCollection(collection)
   elif action == "cus_sscript":
     if not options.inputFile:
@@ -1209,7 +1213,7 @@ if __name__ == "__main__":
       log.error("unable to open %s to write" % options.outputFile)
       sys.exit(3)
 
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.ssl)
     if options.timeout:
       gsaWI.runCusSscript(options.inputFile, f, timeout)
     else:
