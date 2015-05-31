@@ -482,6 +482,31 @@ class gsaWebInterface:
     except:
       log.error("Unable to sync %s properly" % database)
 
+  def resumeCrawl(self):
+    """Resume crawl on the GSA.
+       Supports only 7.2 and higher.
+
+    Args:
+      None
+    """
+    self._login()
+    security_token = self.getSecurityToken('exportAllUrls')
+    if self.is72:
+      log.info("Supported version detected. Resuming crawl...")
+      param = urllib.urlencode({'security_token' : security_token,
+                                'a'              : '1',
+                                'actionType'     : 'crawlStatus',
+                                'resumeCrawl'       : 'Resume Crawl',
+                                })
+    else:
+      log.error("7.0 is not supported.")
+      exit(3)
+    request = urllib2.Request(self.baseURL, param)
+    try:
+      result = self._openurl(request)
+    except:
+      log.error("Failed to resume crawl.")
+
   def exportAllUrls(self, out):
     """Export the list of all URLs
 
@@ -907,7 +932,10 @@ if __name__ == "__main__":
   actionOptionsGrp.add_option("-d" ,"--database_sync", dest="database_sync",
                               help="Sync databases", action="store_true")
 
-  actionOptionsGrp.add_option("-b" ,"--pause_crawl", dest="pause_crawl",
+  actionOptionsGrp.add_option("" ,"--pause_crawl", dest="pause_crawl",
+                              help="Pause crawl", action="store_true")
+
+  actionOptionsGrp.add_option("" ,"--resume_crawl", dest="resume_crawl",
                               help="Pause crawl", action="store_true")
 
   actionOptionsGrp.add_option("-k" ,"--keymatches_export", dest="keymatches_export",
@@ -1034,6 +1062,12 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "pause_crawl"
+  if options.resume_crawl:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "resume_crawl"
   if options.keymatches_export:
     if action:
       log.error("Specify only one action")
@@ -1196,6 +1230,12 @@ if __name__ == "__main__":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsac = gsaWI.pauseCrawl()
     log.info("Crawl is paused.")
+
+  elif action == "resume_crawl":
+    log.info("Try to resume crawl.")
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
+    gsac = gsaWI.resumeCrawl()
+    log.info("Crawl is resumed.")
 
   elif action == "keymatches_export":
     if not options.outputFile:
