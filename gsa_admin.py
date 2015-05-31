@@ -459,17 +459,23 @@ class gsaWebInterface:
 
   def pauseCrawl(self):
     """Pause crawl on the GSA.
+       Supports only 7.2 and higher.
 
     Args:
       None
     """
     self._login()
     security_token = self.getSecurityToken('exportAllUrls')
-    param = urllib.urlencode({'security_token' : security_token,
-                              'a'              : '1',
-                              'actionType'     : 'crawlStatus',
-                              'pauseCrawl'       : 'Pause Crawl',
-                              })
+    if self.is72:
+      log.info("Supported version detected. Pausing crawl...")
+      param = urllib.urlencode({'security_token' : security_token,
+                                'a'              : '1',
+                                'actionType'     : 'crawlStatus',
+                                'pauseCrawl'       : 'Pause Crawl',
+                                })
+    else:
+      log.error("7.0 is not supported.")
+      exit(3)
     request = urllib2.Request(self.baseURL, param)
     try:
       result = self._openurl(request)
