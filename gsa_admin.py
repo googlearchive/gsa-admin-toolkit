@@ -457,6 +457,25 @@ class gsaWebInterface:
       except:
         log.error("Unable to sync %s properly" % database)
 
+  def pauseCrawl(self):
+    """Pause crawl on the GSA.
+
+    Args:
+      None
+    """
+    self._login()
+    security_token = self.getSecurityToken('exportAllUrls')
+    param = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'crawlStatus',
+                              'pauseCrawl'       : 'Pause Crawl',
+                              })
+    request = urllib2.Request(self.baseURL, param)
+    try:
+      result = self._openurl(request)
+    except:
+      log.error("Unable to sync %s properly" % database)
+
   def exportAllUrls(self, out):
     """Export the list of all URLs
 
@@ -882,6 +901,9 @@ if __name__ == "__main__":
   actionOptionsGrp.add_option("-d" ,"--database_sync", dest="database_sync",
                               help="Sync databases", action="store_true")
 
+  actionOptionsGrp.add_option("-b" ,"--pause_crawl", dest="pause_crawl",
+                              help="Pause crawl", action="store_true")
+
   actionOptionsGrp.add_option("-k" ,"--keymatches_export", dest="keymatches_export",
                               help="Export All Keymatches", action="store_true")
 
@@ -1000,6 +1022,12 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "database_sync"
+  if options.pause_crawl:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "pause_crawl"
   if options.keymatches_export:
     if action:
       log.error("Specify only one action")
@@ -1156,6 +1184,12 @@ if __name__ == "__main__":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsac = gsaWI.syncDatabases(databases)
     log.info("Sync completed")
+
+  elif action == "pause_crawl":
+    log.info("Try to pause crawl.")
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
+    gsac = gsaWI.pauseCrawl()
+    log.info("Crawl is paused.")
 
   elif action == "keymatches_export":
     if not options.outputFile:
