@@ -480,7 +480,7 @@ class gsaWebInterface:
     try:
       result = self._openurl(request)
     except:
-      log.error("Unable to sync %s properly" % database)
+      log.error("Failed to pause crawl.")
 
   def resumeCrawl(self):
     """Resume crawl on the GSA.
