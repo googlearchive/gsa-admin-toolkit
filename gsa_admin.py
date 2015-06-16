@@ -59,7 +59,7 @@ this.
 ./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD -m -f ./sscript.txt -o ./out.txt -t 300
 
 TODO(jlowry): add in functionality from adminconsole.py:
-pause/resume crawl, get crawl status, shutdown.
+get crawl status, shutdown.
 """
 
 __author__ = "alastair@mcc-net.co.uk (Alastair McCormack)"
@@ -459,23 +459,20 @@ class gsaWebInterface:
 
   def pauseCrawl(self):
     """Pause crawl on the GSA.
-       Supports only 7.2 and higher.
+       Supports only 7.0 and higher.
 
     Args:
       None
     """
     self._login()
     security_token = self.getSecurityToken('crawlStatus')
-    if self.is72:
-      log.info("Supported version detected. Pausing crawl...")
-      param = urllib.urlencode({'security_token' : security_token,
-                                'a'              : '1',
-                                'actionType'     : 'crawlStatus',
-                                'pauseCrawl'       : 'Pause Crawl',
-                                })
-    else:
-      log.error("7.0 is not supported.")
-      exit(3)
+    log.info("Supported version detected. Pausing crawl...")
+    param = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'crawlStatus',
+                              'pauseCrawl'       : 'Pause Crawl',
+                              })
+
     request = urllib2.Request(self.baseURL, param)
     try:
       result = self._openurl(request)
@@ -484,23 +481,20 @@ class gsaWebInterface:
 
   def resumeCrawl(self):
     """Resume crawl on the GSA.
-       Supports only 7.2 and higher.
+       Supports only 7.0 and higher.
 
     Args:
       None
     """
     self._login()
     security_token = self.getSecurityToken('crawlStatus')
-    if self.is72:
-      log.info("Supported version detected. Resuming crawl...")
-      param = urllib.urlencode({'security_token' : security_token,
-                                'a'              : '1',
-                                'actionType'     : 'crawlStatus',
-                                'resumeCrawl'       : 'Resume Crawl',
-                                })
-    else:
-      log.error("7.0 is not supported.")
-      exit(3)
+    log.info("Supported version detected. Resuming crawl...")
+    param = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'crawlStatus',
+                              'resumeCrawl'       : 'Resume Crawl',
+                              })
+
     request = urllib2.Request(self.baseURL, param)
     try:
       result = self._openurl(request)
