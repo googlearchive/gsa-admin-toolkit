@@ -466,11 +466,11 @@ class gsaWebInterface:
     """
     self._login()
     security_token = self.getSecurityToken('crawlStatus')
-    log.info("Supported version detected. Pausing crawl...")
+    log.info("Pausing crawl...")
     param = urllib.urlencode({'security_token' : security_token,
                               'a'              : '1',
                               'actionType'     : 'crawlStatus',
-                              'pauseCrawl'       : 'Pause Crawl',
+                              'pauseCrawl'     : 'Pause Crawl',
                               })
 
     request = urllib2.Request(self.baseURL, param)
@@ -488,11 +488,11 @@ class gsaWebInterface:
     """
     self._login()
     security_token = self.getSecurityToken('crawlStatus')
-    log.info("Supported version detected. Resuming crawl...")
+    log.info("Resuming crawl...")
     param = urllib.urlencode({'security_token' : security_token,
                               'a'              : '1',
                               'actionType'     : 'crawlStatus',
-                              'resumeCrawl'       : 'Resume Crawl',
+                              'resumeCrawl'    : 'Resume Crawl',
                               })
 
     request = urllib2.Request(self.baseURL, param)
