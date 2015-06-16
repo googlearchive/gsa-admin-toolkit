@@ -465,7 +465,7 @@ class gsaWebInterface:
       None
     """
     self._login()
-    security_token = self.getSecurityToken('exportAllUrls')
+    security_token = self.getSecurityToken('crawlStatus')
     if self.is72:
       log.info("Supported version detected. Pausing crawl...")
       param = urllib.urlencode({'security_token' : security_token,
@@ -490,7 +490,7 @@ class gsaWebInterface:
       None
     """
     self._login()
-    security_token = self.getSecurityToken('exportAllUrls')
+    security_token = self.getSecurityToken('crawlStatus')
     if self.is72:
       log.info("Supported version detected. Resuming crawl...")
       param = urllib.urlencode({'security_token' : security_token,
