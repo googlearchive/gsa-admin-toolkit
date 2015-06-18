@@ -59,7 +59,7 @@ this.
 ./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD -m -f ./sscript.txt -o ./out.txt -t 300
 
 TODO(jlowry): add in functionality from adminconsole.py:
-pause/resume crawl, get crawl status, shutdown.
+get crawl status, shutdown.
 """
 
 __author__ = "alastair@mcc-net.co.uk (Alastair McCormack)"
@@ -456,6 +456,50 @@ class gsaWebInterface:
         result = self._openurl(request)
       except:
         log.error("Unable to sync %s properly" % database)
+
+  def pauseCrawl(self):
+    """Pause crawl on the GSA.
+       Supports only 7.0 and higher.
+
+    Args:
+      None
+    """
+    self._login()
+    security_token = self.getSecurityToken('crawlStatus')
+    log.info("Pausing crawl...")
+    param = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'crawlStatus',
+                              'pauseCrawl'     : 'Pause Crawl',
+                              })
+
+    request = urllib2.Request(self.baseURL, param)
+    try:
+      result = self._openurl(request)
+    except:
+      log.error("Failed to pause crawl.")
+
+  def resumeCrawl(self):
+    """Resume crawl on the GSA.
+       Supports only 7.0 and higher.
+
+    Args:
+      None
+    """
+    self._login()
+    security_token = self.getSecurityToken('crawlStatus')
+    log.info("Resuming crawl...")
+    param = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'crawlStatus',
+                              'resumeCrawl'    : 'Resume Crawl',
+                              })
+
+    request = urllib2.Request(self.baseURL, param)
+    try:
+      result = self._openurl(request)
+    except:
+      log.error("Failed to resume crawl.")
 
   def exportAllUrls(self, out):
     """Export the list of all URLs
@@ -882,6 +926,12 @@ if __name__ == "__main__":
   actionOptionsGrp.add_option("-d" ,"--database_sync", dest="database_sync",
                               help="Sync databases", action="store_true")
 
+  actionOptionsGrp.add_option("" ,"--pause_crawl", dest="pause_crawl",
+                              help="Pause crawl", action="store_true")
+
+  actionOptionsGrp.add_option("" ,"--resume_crawl", dest="resume_crawl",
+                              help="Pause crawl", action="store_true")
+
   actionOptionsGrp.add_option("-k" ,"--keymatches_export", dest="keymatches_export",
                               help="Export All Keymatches", action="store_true")
 
@@ -1000,6 +1050,18 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "database_sync"
+  if options.pause_crawl:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "pause_crawl"
+  if options.resume_crawl:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "resume_crawl"
   if options.keymatches_export:
     if action:
       log.error("Specify only one action")
@@ -1156,6 +1218,18 @@ if __name__ == "__main__":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsac = gsaWI.syncDatabases(databases)
     log.info("Sync completed")
+
+  elif action == "pause_crawl":
+    log.info("Try to pause crawl.")
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
+    gsac = gsaWI.pauseCrawl()
+    log.info("Crawl is paused.")
+
+  elif action == "resume_crawl":
+    log.info("Try to resume crawl.")
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
+    gsac = gsaWI.resumeCrawl()
+    log.info("Crawl is resumed.")
 
   elif action == "keymatches_export":
     if not options.outputFile:
