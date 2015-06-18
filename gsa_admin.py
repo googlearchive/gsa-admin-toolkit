@@ -58,6 +58,12 @@ this.
 7. Run custom support script provided by Google Support
 ./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD -m -f ./sscript.txt -o ./out.txt -t 300
 
+8. Pause crawl
+./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD --pause_crawl
+
+9. Resume crawl
+./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD --resume_crawl
+
 TODO(jlowry): add in functionality from adminconsole.py:
 get crawl status, shutdown.
 """
