@@ -25,17 +25,19 @@ This code is not supported by Google
     <title>Simple form for removing URLs using a feed</title>
   <script type="text/javascript">
   //<![CDATA[
-  function buildFeed(header, records, footer, attributes) {
+  function buildFeed(header, records, footer, attributes ) {
     var records_xml = '';
     var rl = records.length;
-    attributes = attributes || '';
+    attributes = typeof attributes !== 'undefined' ?  attributes : ''; 
+    //attributes = attributes || '';
     for (r = 0; r < rl; r++) {
       if (records[r].length != 0) {
-        records_xml += '    <record url="' + records[r] + '" ' + attibutes + '/>\n';
+        records_xml += '    <record url="' + records[r] + '" mimetype="text/plain" ' + attributes + ' />\n';
       }
     }
     return header + records_xml + footer;
   }
+
   function actionURLs(groupAction, recordAttributes) {
     var feed_type = document.getElementById('feed_type');
     var feed_datasource = document.getElementById('feed_datasource');
@@ -61,7 +63,7 @@ This code is not supported by Google
              '    <datasource>' + feed_datasource.value + '</datasource>\n' +
              '    <feedtype>' + feed_type.value + '</feedtype>\n' +
              '  </header>\n' +
-             '  <group>' + action + '\n';
+             '  <group ' + action + ' >\n';
     footer = '  </group>\n</gsafeed>';
     feed_textarea.value = buildFeed(header,
                                     urls_textarea.value.split('\n'),
