@@ -24,16 +24,14 @@ This code is not supported by Google
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Simple form for removing URLs using a feed</title>
   <script type="text/javascript">
-  //<![CDATA[
   function buildFeed(header, records, footer, attributes ) {
     var records_xml = '';
     var rl = records.length;
     attributes = typeof attributes !== 'undefined' ?  attributes : ''; 
-    //attributes = attributes || '';
     for (r = 0; r < rl; r++) {
-      if (records[r].length != 0) {
-        records_xml += '    <record url="' + records[r] + '" mimetype="text/plain" ' + attributes + ' />\n';
-      }
+        if (records[r].length != 0) {
+            records_xml += '    <record url="' + records[r] + '" mimetype="text/plain" ' + attributes + ' />\n';
+        }
     }
     return header + records_xml + footer;
   }
@@ -43,10 +41,10 @@ This code is not supported by Google
     var feed_datasource = document.getElementById('feed_datasource');
     var feed_textarea = document.getElementById('feed_textarea');
     var urls_textarea = document.getElementById('urls_textarea');
-	var action = '';
+    var action = '';
     if (groupAction == 'delete') {
         feed_datasource.value = 'remove-urls';
-		action = 'action="delete"';
+        action = 'action="delete"';
     } else {
         feed_datasource.value = 'web';
     }
@@ -71,6 +69,7 @@ This code is not supported by Google
                                     recordAttributes);
     submitForm();
   }
+
   function submitForm() {
     var feed_form = document.getElementById('feed_form');
     var appliance = document.getElementById('appliance_input').value;
@@ -83,7 +82,7 @@ This code is not supported by Google
     feed_form.action = protocol + "://" + appliance + ":" + port + "/xmlfeed"
     feed_form.submit();
   }
-  //-->
+
   </script>
   </head>
   <body>
@@ -106,7 +105,7 @@ This code is not supported by Google
 	 	</ul>
 	 </li>
 	 </ol>
-	 <p>Read the <a href="http://www.google.com/support/enterprise/static/gsa/docs/admin/72/gsa_doc_set/feedsguide/feedsguide.html"
+	 <p>Read the <a href="http://www.google.com/support/enterprise/static/gsa/docs/admin/74/gsa_doc_set/feedsguide/feedsguide.html"
 	 >Feeds Protocol Developer's Guide</a> to learn more about how this works.</p>
     <form name="urls" id="urls_form" action="#">
       <p>Appliance hostname or IP address:
@@ -123,7 +122,7 @@ This code is not supported by Google
       <p>
         <input type="button" value="Remove them" onclick="actionURLs('delete');" />
         <input type="button" value="Re-crawl them!" onclick="actionURLs('add');" />
-		<input type="button" value="Re-crawl them immediately!" onclick="actionURLs('add','crawl-immediately');" />
+	<input type="button" value="Re-crawl them immediately!" onclick="actionURLs('add','crawl-immediately');" />
       </p>
     </form>
     <form enctype="multipart/form-data" method="post"
@@ -134,9 +133,9 @@ This code is not supported by Google
       <input type="hidden" name="feedtype" id="feed_type" />
       <textarea name="data" cols="100" rows="1" id="feed_textarea"></textarea>
     </form>
-	<p>Copyright &copy; 2009 Google Inc. All Rights Reserved.</p>
+	<p>Copyright &copy; 2015 Google Inc. All Rights Reserved.</p>
   <p>Latest version can be found <a
-  href="https://raw.githubusercontent.com/google/gsa-admin-toolkit/master/remove-or-recrawl-urls.html"
+  href="https://github.com/google/gsa-admin-toolkit/blob/master/remove-or-recrawl-urls.html"
 	>on GitHub</a>.
   <p>Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
