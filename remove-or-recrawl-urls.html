@@ -24,23 +24,35 @@ This code is not supported by Google
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Simple form for removing URLs using a feed</title>
   <script type="text/javascript">
-  //<![CDATA[
-  function buildFeed(header, records, footer) {
+  function buildFeed(header, records, footer, attributes ) {
     var records_xml = '';
     var rl = records.length;
+    attributes = typeof attributes !== 'undefined' ?  attributes : ''; 
     for (r = 0; r < rl; r++) {
-      if (records[r].length != 0) {
-        records_xml += '    <record url="' + records[r] + '" />\n';
-      }
+        if (records[r].length != 0) {
+            records_xml += '    <record url="' + records[r] + '" mimetype="text/plain" ' + attributes + ' />\n';
+        }
     }
     return header + records_xml + footer;
   }
-  function recrawlURLs() {
+
+  function actionURLs(groupAction, recordAttributes) {
     var feed_type = document.getElementById('feed_type');
     var feed_datasource = document.getElementById('feed_datasource');
     var feed_textarea = document.getElementById('feed_textarea');
     var urls_textarea = document.getElementById('urls_textarea');
-    feed_datasource.value = 'web';
+    var action = '';
+    if (groupAction == 'delete') {
+        feed_datasource.value = 'remove-urls';
+        action = 'action="delete"';
+    } else {
+        feed_datasource.value = 'web';
+    }
+    if (recordAttributes == 'crawl-immediately') {
+        recordAttributes = 'crawl-immediately="true"';
+    } else {
+        recordAttributes =  '';
+    }
     feed_type.value = 'incremental';
     header = '<?xml version="1.0" encoding="iso-8859-1"?>\n' +
              '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">\n' +
@@ -49,34 +61,15 @@ This code is not supported by Google
              '    <datasource>' + feed_datasource.value + '</datasource>\n' +
              '    <feedtype>' + feed_type.value + '</feedtype>\n' +
              '  </header>\n' +
-             '  <group>\n';
+             '  <group ' + action + ' >\n';
     footer = '  </group>\n</gsafeed>';
     feed_textarea.value = buildFeed(header,
                                     urls_textarea.value.split('\n'),
-                                    footer);
+                                    footer,
+                                    recordAttributes);
     submitForm();
   }
-  function removeURLs() {
-    var feed_type = document.getElementById('feed_type');
-    var feed_datasource = document.getElementById('feed_datasource');
-    var feed_textarea = document.getElementById('feed_textarea');
-    var urls_textarea = document.getElementById('urls_textarea');
-    feed_datasource.value = 'remove-urls';
-    feed_type.value = 'incremental';
-    header = '<?xml version="1.0" encoding="iso-8859-1"?>\n' +
-             '<!DOCTYPE gsafeed PUBLIC "-//Google//DTD GSA Feeds//EN" "">\n' +
-             '<gsafeed>\n' +
-             '  <header>\n' +
-             '    <datasource>' + feed_datasource.value + '</datasource>\n' +
-             '    <feedtype>' + feed_type.value + '</feedtype>\n' +
-             '  </header>\n' +
-             '  <group action="delete">\n';
-    footer = '  </group>\n</gsafeed>';
-    feed_textarea.value = buildFeed(header,
-                                    urls_textarea.value.split('\n'),
-                                    footer);
-    submitForm();
-  }
+
   function submitForm() {
     var feed_form = document.getElementById('feed_form');
     var appliance = document.getElementById('appliance_input').value;
@@ -89,7 +82,7 @@ This code is not supported by Google
     feed_form.action = protocol + "://" + appliance + ":" + port + "/xmlfeed"
     feed_form.submit();
   }
-  //-->
+
   </script>
   </head>
   <body>
@@ -107,10 +100,12 @@ This code is not supported by Google
 		 one record per URL, all in a group with <tt>action="delete"</tt> to remove them from the index.</li>
 	   <li><b>Recrawl them</b> will submit a web feed (datasource <tt>web</tt>) with
 		 one record per URL, with no meta data to inject them in the crawl queue.</li>
+ 	   <li><b>Recrawl them immediately</b> will submit a web feed (datasource <tt>web</tt>) with
+ 		 one record per URL, with no meta data to inject them in the crawl queue and with additional flag to crawl immediately.</li> 
 	 	</ul>
 	 </li>
 	 </ol>
-	 <p>Read the <a href="http://www.google.com/support/enterprise/static/gsa/docs/admin/72/gsa_doc_set/feedsguide/feedsguide.html"
+	 <p>Read the <a href="http://www.google.com/support/enterprise/static/gsa/docs/admin/74/gsa_doc_set/feedsguide/feedsguide.html"
 	 >Feeds Protocol Developer's Guide</a> to learn more about how this works.</p>
     <form name="urls" id="urls_form" action="#">
       <p>Appliance hostname or IP address:
@@ -125,8 +120,9 @@ This code is not supported by Google
       </p>
       <textarea name="urls" cols="100" rows="25" id="urls_textarea"></textarea>
       <p>
-        <input type="button" value="Remove them" onclick="removeURLs();" />
-        <input type="button" value="Re-crawl them!" onclick="recrawlURLs();" />
+        <input type="button" value="Remove them" onclick="actionURLs('delete');" />
+        <input type="button" value="Re-crawl them!" onclick="actionURLs('add');" />
+	<input type="button" value="Re-crawl them immediately!" onclick="actionURLs('add','crawl-immediately');" />
       </p>
     </form>
     <form enctype="multipart/form-data" method="post"
@@ -137,9 +133,9 @@ This code is not supported by Google
       <input type="hidden" name="feedtype" id="feed_type" />
       <textarea name="data" cols="100" rows="1" id="feed_textarea"></textarea>
     </form>
-	<p>Copyright &copy; 2009 Google Inc. All Rights Reserved.</p>
+	<p>Copyright &copy; 2015 Google Inc. All Rights Reserved.</p>
   <p>Latest version can be found <a
-  href="https://raw.githubusercontent.com/google/gsa-admin-toolkit/master/remove-or-recrawl-urls.html"
+  href="https://github.com/google/gsa-admin-toolkit/blob/master/remove-or-recrawl-urls.html"
 	>on GitHub</a>.
   <p>Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
