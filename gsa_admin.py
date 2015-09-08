@@ -817,9 +817,10 @@ class gsaWebInterface:
     security_token = self.getSecurityToken('cache')
     fields = [('security_token', security_token),
               ('actionType', 'supportScripts'),
-              ('action', 'run'),
+              ('doaction', 'run'),
               ('scriptType', 'customFile'),
-              ('run', 'Run support script')]
+              ('run', 'Run support script'),
+              ('a', '1')]
     files = [('importFileName', 'cus_sscript_file', ss_str)]
     content_type, body = self._encode_multipart_formdata(fields,files)
     headers = {'User-Agent': 'python-urllib2', 'Content-Type': content_type}
