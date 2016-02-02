@@ -576,7 +576,7 @@ class gsaWebInterface:
       request = urllib2.Request(self.baseURL, param)
       result = self._openurl(request)
       if self.is72:
-        generating_msg = '<input type="submit" name="generate" id="generate" disabled class="hb-r-N od-Md-se" value="Generating...">'
+        generating_msg = '<input type="submit" name="generate" id="generate" disabled class="hb-r-N nd-Ld-re" value="Generating...">'
       else:
         generating_msg = '<input type="submit" name="generate" id="generate" disabled value="Generating...">'
       content = result.read()
