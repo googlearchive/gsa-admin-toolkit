@@ -517,7 +517,7 @@ class gsaWebInterface:
     self._login()
     security_token = self.getSecurityToken('contentDiagnostics')
     log.info("Recrawling collection %s with pattern %s " % (collection, pattern))
-    param = urllib.urlencode({'security_token' : security_token,
+    params = urllib.urlencode({'security_token' : security_token,
                               'a'              : '1',
                               'actionType'     : 'contentDiagnostics',
                               'resumeCrawl'    : 'Resume Crawl',
@@ -528,11 +528,11 @@ class gsaWebInterface:
                               'recrawlThis'    : "Recrawl this pattern"
                               })
 
-    request = urllib2.Request(self.baseURL, param)
+    request = urllib2.Request(self.baseURL, params)
     try:
       result = self._openurl(request)
     except:
-      log.error("Failed to recrawl url")
+      log.error("Failed to recrawl in collection: %s url: %s" % (collection,pattern))
 
   def exportAllUrls(self, out):
     """Export the list of all URLs
@@ -1295,15 +1295,15 @@ if __name__ == "__main__":
     f.close()
 
   elif action == "recrawl_pattern":
-    if not options.urlpattern:
+    if options.urlpattern:
+      pattern = options.urlpattern
+    else:
       log.error("URL pattern to recrawl is not specified")
       sys.exit(3)
-    else:
-      pattern = options.urlpattern
-    if not options.collection:
-      collection = "default_collection"
-    else:
+    if options.collection:
       collection = options.collection
+    else:
+      collection = "default_collection"
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsac = gsaWI.recrawlPattern(collection, options.urlpattern)
     log.info("Recrawl is done")
