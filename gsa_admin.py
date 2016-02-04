@@ -507,6 +507,33 @@ class gsaWebInterface:
     except:
       log.error("Failed to resume crawl.")
 
+  def recrawlPattern(self, collection, pattern):
+    """ Recrawl pattern
+
+    Args:
+        collection: string representing valid collection
+        pattern: string representing valid pattern
+    """
+    self._login()
+    security_token = self.getSecurityToken('contentDiagnostics')
+    log.info("Recrawling collection %s with pattern %s " % (collection, pattern))
+    params = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'contentDiagnostics',
+                              'resumeCrawl'    : 'Resume Crawl',
+                              'uriAt'          : pattern,
+                              'recrawlUrl'     : 'false',
+                              'recrawlAction'  : 'recrawl',
+                              'collection'     : collection,
+                              'recrawlThis'    : "Recrawl this pattern"
+                              })
+
+    request = urllib2.Request(self.baseURL, params)
+    try:
+      result = self._openurl(request)
+    except:
+      log.error("Failed to recrawl in collection: %s url: %s" % (collection,pattern))
+
   def exportAllUrls(self, out):
     """Export the list of all URLs
 
@@ -906,6 +933,9 @@ if __name__ == "__main__":
   parser.add_option("--collection", dest="collection",
                     help="Collection name")
 
+  parser.add_option("--urlpattern", dest="urlpattern",
+                    help="Url pattern for recrawl")
+
   # actionsOptions
   actionOptionsGrp = OptionGroup(parser, "Actions:")
 
@@ -953,6 +983,9 @@ if __name__ == "__main__":
 
   actionOptionsGrp.add_option("-m", "--custom-sscript", dest="cus_sscript",
                               action="store_true", help="Run custom support script")
+
+  actionOptionsGrp.add_option("-R", "--recrawl", dest="recrawl_pattern",
+                              action="store_true", help="Recrawl patern in collection")
 
   parser.add_option_group(actionOptionsGrp)
 
@@ -1099,10 +1132,15 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "cus_sscript"
+  if options.recrawl_pattern:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "recrawl_pattern"
   if not action:
       log.error("No action specified")
       sys.exit(3)
-
 
   if action != "sign" or action != "verify":
     #Check user, password, host
@@ -1255,6 +1293,21 @@ if __name__ == "__main__":
     gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsaWI.exportKeymatches(options.frontend, f)
     f.close()
+
+  elif action == "recrawl_pattern":
+    if options.urlpattern:
+      pattern = options.urlpattern
+    else:
+      log.error("URL pattern to recrawl is not specified")
+      sys.exit(3)
+    if options.collection:
+      collection = options.collection
+    else:
+      collection = "default_collection"
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
+    gsac = gsaWI.recrawlPattern(collection, options.urlpattern)
+    log.info("Recrawl is done")
+
 
   elif action == "synonyms_export":
     if not options.outputFile:
