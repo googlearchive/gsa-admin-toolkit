@@ -58,8 +58,14 @@ this.
 7. Run custom support script provided by Google Support
 ./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD -m -f ./sscript.txt -o ./out.txt -t 300
 
+8. Pause crawl
+./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD --pause_crawl
+
+9. Resume crawl
+./gsa_admin.py -n YOUR_GSA --port 8000 -u admin -p YOUR_PASSWORD --resume_crawl
+
 TODO(jlowry): add in functionality from adminconsole.py:
-pause/resume crawl, get crawl status, shutdown.
+get crawl status, shutdown.
 """
 
 __author__ = "alastair@mcc-net.co.uk (Alastair McCormack)"
@@ -214,11 +220,13 @@ class gsaWebInterface:
   loggedIn = None
   _url_opener = None
 
-  def __init__(self, hostName, username, password, port=8000):
-    self.baseURL = 'http://%s:%s/EnterpriseController' % (hostName, port)
+  def __init__(self, hostName, username, password, port=8000, use_ssl=False):
+    protocol = 'https' if use_ssl else 'http'
+    self.baseURL = '%s://%s:%s/EnterpriseController' % (protocol, hostName, port)
     self.hostName = hostName
     self.username = username
     self.password = password
+    log.debug("Using a base URL of '%s'" % self.baseURL)
     # build cookie jar for this web instance only. Should allow for GSAs port mapped behind a reverse proxy.
     cookieJar = cookielib.CookieJar()
     self._url_opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
@@ -451,13 +459,85 @@ class gsaWebInterface:
     self._login()
     for database in database_list:
       log.info("Syncing %s ..." % database)
-      param = urllib.urlencode({"actionType": "syncDatabase",
+      param = urllib.urlencode({"a": "1",
+                                "actionType": "syncDatabase",
                                 "entryName": database})
       request = urllib2.Request(self.baseURL + "?" + param)
       try:
         result = self._openurl(request)
       except:
         log.error("Unable to sync %s properly" % database)
+
+  def pauseCrawl(self):
+    """Pause crawl on the GSA.
+       Supports only 7.0 and higher.
+
+    Args:
+      None
+    """
+    self._login()
+    security_token = self.getSecurityToken('crawlStatus')
+    log.info("Pausing crawl...")
+    param = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'crawlStatus',
+                              'pauseCrawl'     : 'Pause Crawl',
+                              })
+
+    request = urllib2.Request(self.baseURL, param)
+    try:
+      result = self._openurl(request)
+    except:
+      log.error("Failed to pause crawl.")
+
+  def resumeCrawl(self):
+    """Resume crawl on the GSA.
+       Supports only 7.0 and higher.
+
+    Args:
+      None
+    """
+    self._login()
+    security_token = self.getSecurityToken('crawlStatus')
+    log.info("Resuming crawl...")
+    param = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'crawlStatus',
+                              'resumeCrawl'    : 'Resume Crawl',
+                              })
+
+    request = urllib2.Request(self.baseURL, param)
+    try:
+      result = self._openurl(request)
+    except:
+      log.error("Failed to resume crawl.")
+
+  def recrawlPattern(self, collection, pattern):
+    """ Recrawl pattern
+
+    Args:
+        collection: string representing valid collection
+        pattern: string representing valid pattern
+    """
+    self._login()
+    security_token = self.getSecurityToken('contentDiagnostics')
+    log.info("Recrawling collection %s with pattern %s " % (collection, pattern))
+    params = urllib.urlencode({'security_token' : security_token,
+                              'a'              : '1',
+                              'actionType'     : 'contentDiagnostics',
+                              'resumeCrawl'    : 'Resume Crawl',
+                              'uriAt'          : pattern,
+                              'recrawlUrl'     : 'false',
+                              'recrawlAction'  : 'recrawl',
+                              'collection'     : collection,
+                              'recrawlThis'    : "Recrawl this pattern"
+                              })
+
+    request = urllib2.Request(self.baseURL, params)
+    try:
+      result = self._openurl(request)
+    except:
+      log.error("Failed to recrawl in collection: %s url: %s" % (collection,pattern))
 
   def exportAllUrls(self, out):
     """Export the list of all URLs
@@ -769,9 +849,10 @@ class gsaWebInterface:
     security_token = self.getSecurityToken('cache')
     fields = [('security_token', security_token),
               ('actionType', 'supportScripts'),
-              ('action', 'run'),
+              ('doaction', 'run'),
               ('scriptType', 'customFile'),
-              ('run', 'Run support script')]
+              ('run', 'Run support script'),
+              ('a', '1')]
     files = [('importFileName', 'cus_sscript_file', ss_str)]
     content_type, body = self._encode_multipart_formdata(fields,files)
     headers = {'User-Agent': 'python-urllib2', 'Content-Type': content_type}
@@ -857,6 +938,9 @@ if __name__ == "__main__":
   parser.add_option("--collection", dest="collection",
                     help="Collection name")
 
+  parser.add_option("--urlpattern", dest="urlpattern",
+                    help="Url pattern for recrawl")
+
   # actionsOptions
   actionOptionsGrp = OptionGroup(parser, "Actions:")
 
@@ -884,6 +968,12 @@ if __name__ == "__main__":
   actionOptionsGrp.add_option("-d" ,"--database_sync", dest="database_sync",
                               help="Sync databases", action="store_true")
 
+  actionOptionsGrp.add_option("" ,"--pause_crawl", dest="pause_crawl",
+                              help="Pause crawl", action="store_true")
+
+  actionOptionsGrp.add_option("" ,"--resume_crawl", dest="resume_crawl",
+                              help="Pause crawl", action="store_true")
+
   actionOptionsGrp.add_option("-k" ,"--keymatches_export", dest="keymatches_export",
                               help="Export All Keymatches", action="store_true")
 
@@ -899,6 +989,9 @@ if __name__ == "__main__":
   actionOptionsGrp.add_option("-m", "--custom-sscript", dest="cus_sscript",
                               action="store_true", help="Run custom support script")
 
+  actionOptionsGrp.add_option("-R", "--recrawl", dest="recrawl_pattern",
+                              action="store_true", help="Recrawl patern in collection")
+
   parser.add_option_group(actionOptionsGrp)
 
   # gsaHostOptions
@@ -908,7 +1001,11 @@ if __name__ == "__main__":
           help="GSA hostname")
 
   gsaHostOptions.add_option("--port", dest="port",
-          help="Upload port. Defaults to 8000", default="8000")
+          help="GSA port. Defaults to 8000", default="8000")
+
+  gsaHostOptions.add_option("--use-ssl", dest="use_ssl",
+          help="Use SSL (HTTPS). Default is false (HTTP).", action="store_true",
+          default=False)
 
   gsaHostOptions.add_option("-u", "--username", dest="gsaUsername",
             help="Username to login GSA")
@@ -998,6 +1095,18 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "database_sync"
+  if options.pause_crawl:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "pause_crawl"
+  if options.resume_crawl:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "resume_crawl"
   if options.keymatches_export:
     if action:
       log.error("Specify only one action")
@@ -1028,10 +1137,15 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       action = "cus_sscript"
+  if options.recrawl_pattern:
+    if action:
+      log.error("Specify only one action")
+      sys.exit(3)
+    else:
+      action = "recrawl_pattern"
   if not action:
       log.error("No action specified")
       sys.exit(3)
-
 
   if action != "sign" or action != "verify":
     #Check user, password, host
@@ -1069,7 +1183,7 @@ if __name__ == "__main__":
     gsac = gsaConfig(options.inputFile)
     if not gsac.verifySignature(options.signpassword):
       log.warn("Pre-import validation failed. Signature does not match. Expect the GSA to fail on import")
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsaWI.importConfig(gsac, options.signpassword)
     log.info("Import completed")
 
@@ -1078,7 +1192,7 @@ if __name__ == "__main__":
       log.error("Output file not given")
       sys.exit(3)
     log.info("Exporting config from %s to %s" % (options.gsaHostName, options.outputFile) )
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsac = gsaWI.exportConfig(options.signpassword)
     gsac.writeFile(options.outputFile)
     log.info("Export completed")
@@ -1105,10 +1219,10 @@ if __name__ == "__main__":
         sys.exit(3)
 
     if options.maxhostload and options.timeout:
-      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
       gsaWI.setAccessControl(options.maxhostload, options.timeout)
     elif options.maxhostload:
-      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
       gsaWI.setAccessControl(options.maxhostload)
     else:
       log.error("No value for Authorization Cache Timeout or Max Host Load")
@@ -1125,7 +1239,7 @@ if __name__ == "__main__":
       sys.exit(3)
     else:
       log.info("Retrieving URLs in crawl diagnostics to %s" % options.outputFile)
-      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+      gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
       gsaWI.getAllUrls(f)
       f.close()
       log.info("All URLs exported.")
@@ -1141,7 +1255,7 @@ if __name__ == "__main__":
       sys.exit(3)
 
     log.info("Exporting all URLs to %s" % options.outputFile)
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsaWI.exportAllUrls(f)
     f.close()
 
@@ -1151,9 +1265,21 @@ if __name__ == "__main__":
       sys.exit(3)
     databases = options.sources.split(",")
     log.info("Sync'ing databases %s" % options.sources)
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsac = gsaWI.syncDatabases(databases)
     log.info("Sync completed")
+
+  elif action == "pause_crawl":
+    log.info("Try to pause crawl.")
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
+    gsac = gsaWI.pauseCrawl()
+    log.info("Crawl is paused.")
+
+  elif action == "resume_crawl":
+    log.info("Try to resume crawl.")
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
+    gsac = gsaWI.resumeCrawl()
+    log.info("Crawl is resumed.")
 
   elif action == "keymatches_export":
     if not options.outputFile:
@@ -1169,9 +1295,24 @@ if __name__ == "__main__":
       sys.exit(3)
 
     log.info("Exporting keymatches for %s to %s" % (options.frontend, options.outputFile) )
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsaWI.exportKeymatches(options.frontend, f)
     f.close()
+
+  elif action == "recrawl_pattern":
+    if options.urlpattern:
+      pattern = options.urlpattern
+    else:
+      log.error("URL pattern to recrawl is not specified")
+      sys.exit(3)
+    if options.collection:
+      collection = options.collection
+    else:
+      collection = "default_collection"
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
+    gsac = gsaWI.recrawlPattern(collection, options.urlpattern)
+    log.info("Recrawl is done")
+
 
   elif action == "synonyms_export":
     if not options.outputFile:
@@ -1187,18 +1328,18 @@ if __name__ == "__main__":
       sys.exit(3)
 
     log.info("Exporting synonyms for %s to %s" % (options.frontend, options.outputFile) )
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsaWI.exportSynonyms(options.frontend, f)
     f.close()
   elif action == "status":
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsaWI.getStatus()
   elif action == "getcollection":
     if not options.collection:
       collection = "default_collection"
     else:
       collection = options.collection
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     gsaWI.getCollection(collection)
   elif action == "cus_sscript":
     if not options.inputFile:
@@ -1213,7 +1354,7 @@ if __name__ == "__main__":
       log.error("unable to open %s to write" % options.outputFile)
       sys.exit(3)
 
-    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword)
+    gsaWI = gsaWebInterface(options.gsaHostName, options.gsaUsername, options.gsaPassword, options.port, options.use_ssl)
     if options.timeout:
       gsaWI.runCusSscript(options.inputFile, f, timeout)
     else:
