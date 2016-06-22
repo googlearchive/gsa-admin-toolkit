@@ -51,4 +51,4 @@ Source
   1. [fetch_secure.py](https://github.com/google/gsa-admin-toolkit/blob/master/fetch_secure.py) -- Fetch secure search results from GSA by following all Universal Login redirects.
   1. [gsa_sign.cs](https://github.com/google/gsa-admin-toolkit/blob/master/gsa_sign.cs) -- Example in C# how to sign exported configuration 
   1. [license_exceeded.py](https://github.com/google/gsa-admin-toolkit/blob/master/license_exceeded.py) --  Audit the exported URLs for common cause of high license usage, and provide resolution tips.
-
+  1. [SimpleFeedContentGenerator.java](https://github.com/google/gsa-admin-toolkit/blob/master/SimpleFeedContentGenerator.java) --  Simple feed content generator. Useful for performance testing. Generates feed file with simple content and metadata.

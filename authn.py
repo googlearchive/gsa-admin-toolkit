@@ -166,7 +166,7 @@ class SignatureError(Exception):
 class AuthN(object):
 
   def __init__(self, port, protocol, debug_flag, consumer_mech,
-               saml_issuer, gsa_host, binding, cert_file, key_file, key_pwd, use_legacy, exclude_keyinfo):
+               saml_issuer, gsa_host, binding, sign, cert_file, key_file, key_pwd, use_legacy, exclude_keyinfo):
     self.realm = "authn"
     self.protocol = protocol
     self.debug_flag = debug_flag
@@ -175,6 +175,7 @@ class AuthN(object):
     if gsa_host:
       self.gsa_host = gsa_host
     self.binding = binding
+    self.sign = sign
     self.cert_file = cert_file
     self.key_file = key_file
     self.key_pwd = key_pwd
@@ -595,7 +596,7 @@ class AuthN(object):
 
   def _generate_response(self, now, later, username, login_req_id, recipient, audience, signed):
     resp_rand_id = self.getrandom_samlID()
-    rand_id_assert = self.getrandom_samlID()
+    assert_rand_id = self.getrandom_samlID()
     sigtmpl = ''
     if signed:
       if (self.exclude_keyinfo):
@@ -608,6 +609,9 @@ class AuthN(object):
                     '</ds:KeyInfo>')
 
       # if the response is to be signed, create a signature template
+      sign_id = resp_rand_id
+      if self.sign == 'assertion':
+        sign_id = assert_rand_id
       sigtmpl = ('<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">'
                  '<ds:SignedInfo>'
                  '<ds:CanonicalizationMethod '
@@ -626,7 +630,7 @@ class AuthN(object):
                  '</ds:SignedInfo>'
                  '<ds:SignatureValue/>'
                  '%s'
-                 '</ds:Signature>') % (resp_rand_id,key_info)
+                 '</ds:Signature>') % (sign_id, key_info)
     grptmpl = ''
     if self.user_db[username][1]:
       log('looking for group info for user ' + username)
@@ -635,6 +639,12 @@ class AuthN(object):
         grptmpl += '<saml:AttributeValue>%s</saml:AttributeValue>' % grp
         log('found group: ' + grp)
       grptmpl += '</saml:Attribute>' + '</saml:AttributeStatement>'
+
+    sig_resp = sigtmpl
+    sig_assert = ''
+    if self.sign == 'assertion':
+      sig_resp = ''
+      sig_assert = sigtmpl
     resp = ('<samlp:Response '
             'xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" '
             'xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" '
@@ -646,6 +656,7 @@ class AuthN(object):
             '</samlp:Status>'
             '<saml:Assertion '
             'Version="2.0" ID="%s" IssueInstant="%s">'
+            '%s'
             '<saml:Issuer>%s</saml:Issuer>'
             '<saml:Subject>'
             '<saml:NameID>%s</saml:NameID>'
@@ -671,15 +682,20 @@ class AuthN(object):
             '</saml:Assertion>'
             '%s'
             '</samlp:Response>') % (resp_rand_id, now, recipient,
-                                    self.saml_issuer, rand_id_assert, now,
+                                    self.saml_issuer, assert_rand_id, now, sig_assert,
                                     self.saml_issuer, username,
                                     login_req_id, recipient, later,
                                     now, later, audience,
-                                    now, rand_id_assert, grptmpl, sigtmpl)
+                                    now, assert_rand_id, grptmpl, sig_resp)
     if signed:
       # hack DTD that lets xmlsec know the ID field name (pyxmlsec doesn't have
       # a method that lets us specify this)
-      resp = '<!DOCTYPE samlp:Response [<!ATTLIST samlp:Response ID ID #IMPLIED>]>' + resp
+      if self.sign == 'response':
+        # sign response
+        resp = '<!DOCTYPE samlp:Response [<!ATTLIST samlp:Response ID ID #IMPLIED>]>' + resp
+      else:
+        # sign assertion
+        resp = '<!DOCTYPE saml:Assertion [<!ATTLIST saml:Assertion ID ID #IMPLIED>]>' + resp
       return self._signXML(resp)
     return resp
 
@@ -780,6 +796,7 @@ def main():
   saml_issuer = "authn.py"
   gsa_host = None
   binding = "artifact"
+  sign = "response"
   key_file = None
   key_pwd = None
   cert_file = None
@@ -789,14 +806,14 @@ def main():
     print ('\nUsage: authn.py --debug --use_ssl '
            '--port=<port> --consumer_mech=(saml|static) '
            '--saml_issuer=<issuer> --gsa_host=<gsa_host> '
-           '--binding=(artifact|post) --key_file=<key_file> --cert_file=<cert_file> '
+           '--binding=(artifact|post) --sign=(assertion|response) --key_file=<key_file> --cert_file=<cert_file> '
            '--key_blank_pwd --use_legacy --exclude_keyinfo\n')
 
   try:
     opts, args = getopt.getopt(sys.argv[1:], None,
                                ["debug", "use_ssl", "port=",
                                 "consumer_mech=", "saml_issuer=", "gsa_host=",
-                                "binding=", "key_file=", "cert_file=", "key_blank_pwd",
+                                "binding=", "sign=", "key_file=", "cert_file=", "key_blank_pwd",
                                 "use_legacy", "exclude_keyinfo"])
   except getopt.GetoptError:
     usage()
@@ -824,6 +841,8 @@ def main():
       cherrypy.config.update({"global": {"server.socket_port": port}})
     if opt == "--binding":
       binding = arg
+    if opt == "--sign":
+      sign = arg
     if opt == "--key_file":
       key_file = arg
     if opt == "--cert_file":
@@ -864,7 +883,7 @@ def main():
       sys.exit(1)
 
   cherrypy.quickstart(AuthN(cherrypy.server.socket_port, protocol, debug_flag,
-                            consumer_mech, saml_issuer, gsa_host, binding,cert_file,
+                            consumer_mech, saml_issuer, gsa_host, binding, sign, cert_file,
                             key_file, key_pwd, use_legacy, exclude_keyinfo))
 
 if __name__ == '__main__':
