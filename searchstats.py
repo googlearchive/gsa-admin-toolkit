@@ -115,12 +115,11 @@ def main():
   for line in search_log:    # Iterate through lines of the log file.
     if first_line:    # If this is the first line, we need to figure out what
                       # kind of file we've received (search log or partnerlog).
-      if (len(((line.split())[0]).split('.')) == 7) or (
-	len(((line.split())[0]).split('.')) == 4):
-        # True for both formats 
-	#"10.10.10.10!10.10.10.10 -- [21/Oct/2015:08:45:57 -0800]"
-	# and 
-	#"10.10.10.10 -- [21/Oct/2015:08:45:57 -0800]"
+      if len(((line.split())[0]).split('.')) in [4, 7]:
+        # True for both formats
+        #"10.10.10.10!10.10.10.10 -- [21/Oct/2015:08:45:57 -0800]"
+        # and
+        #"10.10.10.10 -- [21/Oct/2015:08:45:57 -0800]"
         # The log file entries start with an IP address, so we assume that it's
         # a search log.  Set our correct field and split variables.
         split_on = " "
