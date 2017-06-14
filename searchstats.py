@@ -117,9 +117,9 @@ def main():
                       # kind of file we've received (search log or partnerlog).
       if len(((line.split())[0]).split('.')) in [4, 7]:
         # True for both formats
-        #"10.10.10.10!10.10.10.10 -- [21/Oct/2015:08:45:57 -0800]"
+        # "10.10.10.10!10.10.10.10 -- [21/Oct/2015:08:45:57 -0800]"
         # and
-        #"10.10.10.10 -- [21/Oct/2015:08:45:57 -0800]"
+        # "10.10.10.10 -- [21/Oct/2015:08:45:57 -0800]"
         # The log file entries start with an IP address, so we assume that it's
         # a search log.  Set our correct field and split variables.
         split_on = " "
