@@ -862,8 +862,7 @@ class gsaWebInterface:
 
     # support script submitted, check whether output is available
     
-    param = urllib.urlencode({"actionType": "supportScripts",
-                              "a": "1"})
+    param = urllib.urlencode({"actionType": "supportScripts", "a": "1"})
     request = urllib2.Request(self.baseURL + "?" + param)
     tm = 0
     sleeptime = 4
