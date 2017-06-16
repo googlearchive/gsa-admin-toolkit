@@ -862,7 +862,7 @@ class gsaWebInterface:
 
     # support script submitted, check whether output is available
     
-    param = urllib.urlencode({"actionType": "supportScripts"})
+    param = urllib.urlencode({"actionType": "supportScripts", "a": "1"})
     request = urllib2.Request(self.baseURL + "?" + param)
     tm = 0
     sleeptime = 4
@@ -883,7 +883,7 @@ class gsaWebInterface:
     param = urllib.urlencode({"actionType": "supportScripts",
                               "security_token": security_token,
                               "download": "Download results from previous run",
-                              "action": "download"})
+                              "doaction": "download"})
     request = urllib2.Request(self.baseURL, param)
     result = self._openurl(request)
     content = result.read()
